@@ -1,0 +1,15 @@
+# These suffixes remain direct in generated profiles.
+steamcontent.com
+steampowered.com
+steamstatic.com
+riotgames.com
+riotcdn.net
+playvalorant.com
+battleye.com
+easyanticheat.net
+epicgames.com
+discord.com
+discord.gg
+youtube.com
+googlevideo.com
+ytimg.com

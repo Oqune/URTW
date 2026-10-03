@@ -1,0 +1,4 @@
+# Optional executable names to route entirely through WireGuard.
+# Uncomment or add entries in your private runtime rules/vpn-processes.txt.
+# codex.exe
+# cursor.exe

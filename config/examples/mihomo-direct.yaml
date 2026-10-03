@@ -1,0 +1,13 @@
+# Safe first-run profile: local proxy only, no TUN or VPN credentials.
+mixed-port: 17890
+bind-address: 127.0.0.1
+allow-lan: false
+mode: rule
+log-level: warning
+ipv6: false
+tun:
+  enable: false
+dns:
+  enable: false
+rules:
+  - MATCH,DIRECT

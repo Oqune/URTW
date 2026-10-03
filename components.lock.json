@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "mihomo": {
+    "version": "v1.19.32",
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "amd64": { "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-windows-amd64-compatible-v1.19.32.zip", "sha256": "974a4d7ad69aed27aa2e8f91d61113573c14dadb14562c63e58effabf59816f0" },
+    "arm64": { "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-windows-arm64-v1.19.32.zip", "sha256": "7a4f6e58af9a120920935f2150cf642d945085fdb3e753314505b334234e1d1e" },
+    "wintun": { "version": "0.14.1", "url": "https://www.wintun.net/builds/wintun-0.14.1.zip", "sha256": "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51" }
+  },
+  "telegram": {
+    "version": "v1.10.4",
+    "repository": "https://github.com/Flowseal/tg-ws-proxy",
+    "amd64": { "url": "https://github.com/Flowseal/tg-ws-proxy/releases/download/v1.10.4/TgWsProxy_windows.exe", "sha256": "b51436e8960307316135e64ac14753b1f3b0e7a46afe1bd6081353b82de20f09" },
+    "arm64": { "url": "https://github.com/Flowseal/tg-ws-proxy/releases/download/v1.10.4/TgWsProxy_windows_arm64.exe", "sha256": "e65c8d34aa312f9b4c603fc5eb490535d4445e22e00f8a4fb2c6902446d8013f" }
+  },
+  "zapret": {
+    "version": "1.10.3",
+    "repository": "https://github.com/Flowseal/zapret-discord-youtube",
+    "amd64": { "url": "https://github.com/Flowseal/zapret-discord-youtube/releases/download/1.10.3/zapret-discord-youtube-1.10.3.zip", "sha256": "244314ae1c24538a0d751601da8e0c925c843371eec4456eb15f14c4fd6b7058" }
+  }
+}

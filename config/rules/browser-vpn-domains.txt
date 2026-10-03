@@ -1,0 +1,10 @@
+# Independent browser PAC selection. Other sites return DIRECT.
+chatgpt.com
+openai.com
+oaistatic.com
+oaiusercontent.com
+claude.ai
+claudeusercontent.com
+aistudio.google.com
+github.com
+githubusercontent.com
