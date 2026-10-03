@@ -227,7 +227,7 @@ function Convert-ToYaml($Object,[int]$Indent=0) {
 function New-ClientDns($Options,[string]$Id) {
     if(-not $Options.ipv6 -and $Options.dns_strategy -in @('prefer_ipv6','ipv6_only')){throw 'Enable IPv6 before choosing an IPv6 DNS strategy.'}
     if($Id -eq 'mihomo' -and $Options.dns_strategy -in @('prefer_ipv6','ipv6_only')){throw 'Mihomo generator supports IPv4-only or its native default family choice; advanced DNS policies use a native YAML.'}
-    if($Id -eq 'mihomo'){return @{enable=$true;listen='127.0.0.1:0';'enhanced-mode'='redir-host';'default-nameserver'=@('1.1.1.1','8.8.8.8');nameserver=@($Options.dns);'proxy-server-nameserver'=@('1.1.1.1','8.8.8.8');ipv6=[bool]$Options.ipv6}}
+    if($Id -eq 'mihomo'){return @{enable=$true;listen='127.0.0.1:0';'enhanced-mode'='redir-host';'default-nameserver'=@('1.1.1.1','8.8.8.8');nameserver=@($Options.dns);'proxy-server-nameserver'=@('1.1.1.1','8.8.8.8');ipv6=([bool]$Options.ipv6 -and $Options.dns_strategy -ne 'ipv4_only')}}
     if($Id -eq 'xray'){if($Options.dns_strategy -eq 'prefer_ipv6'){throw 'Xray supports UseIP, IPv4-only and IPv6-only; select ipv6_only or use a native DNS policy.'};if(@($Options.dns | Where-Object {$_ -match '^tls://'}).Count){throw 'Xray generator accepts DNS IP addresses and HTTPS DoH; use a native profile for other DNS transports.'};return @{servers=@($Options.dns);queryStrategy=$(if(-not $Options.ipv6){'UseIPv4'}else{switch($Options.dns_strategy){ipv4_only {'UseIPv4'}ipv6_only {'UseIPv6'}default {'UseIP'}}})}}
     $servers=@(@{type='udp';tag='bootstrap';server='1.1.1.1'})
     $index=0;foreach($resolver in @($Options.dns)){
@@ -260,7 +260,8 @@ function New-NativeProfile([string]$Id,$Endpoint,$Standard,$Options) {
     }
     if($Id -eq 'xray'){
         $native=@{log=@{loglevel=$(if($Options.log_level -eq 'warn'){'warning'}else{$Options.log_level})};dns=(New-ClientDns $Options $Id);inbounds=@(@{tag='in';listen='127.0.0.1';port=[int]$Options.port;protocol='http';settings=@{};sniffing=@{enabled=$true;destOverride=@('http','tls')}});outbounds=@();routing=@{domainStrategy='AsIs';rules=@(@{type='field';ip=@('127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16');outboundTag='DIRECT'})}}
-        $proxy=New-XrayOutbound $Endpoint;$direct=@{tag='DIRECT';protocol='freedom';settings=@{}};$block=@{tag='BLOCK';protocol='blackhole';settings=@{}}
+        $proxy=New-XrayOutbound $Endpoint;$direct=@{tag='DIRECT';protocol='freedom';settings=@{domainStrategy='UseIP'}};$block=@{tag='BLOCK';protocol='blackhole';settings=@{}}
+        if($proxy -and $proxy.protocol -ne 'wireguard'){if(-not $proxy.ContainsKey('streamSettings')){$proxy.streamSettings=@{}};$proxy.streamSettings.sockopt=@{domainStrategy='UseIP'}}
         $all=@($direct,$block);if($proxy){$all+=@($proxy)};$default=Route-Tag $Standard.default;$native.outbounds=@($all | Sort-Object @{Expression={if($_.tag -eq $default){0}else{1}}})
         foreach($rule in $rules){$r=@{type='field';outboundTag=(Route-Tag $rule.action)};if($rule.kind -eq 'domain'){$r.domain=@('domain:'+$rule.value)}elseif($rule.kind -eq 'ip'){$r.ip=@($rule.value)};$native.routing.rules+=@($r)}
         return ($native | ConvertTo-Json -Depth 40)

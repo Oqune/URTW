@@ -39,6 +39,7 @@ foreach($coreId in @('mihomo','singbox','xray')){
     $options.dns=@('1.1.1.1','https://cloudflare-dns.com/dns-query')
     $options.tun=$false
     $native=New-NativeProfile $coreId $null $directStandard $options
+    if($coreId -eq 'xray'){$json=$native | ConvertFrom-Json;Assert-That (($json.outbounds | Where-Object {$_.protocol -eq 'freedom'}).settings.domainStrategy -eq 'UseIP') 'Xray direct outbound resolves through its configured client DNS'}
     $core=Get-Core $coreId;$nativePath=Join-Path $runtime ('profiles\'+$coreId+'-workspace.'+$core.format)
     Write-AtomicText $nativePath $native -Private
     Assert-That ((Get-NativeProfilePort $coreId $nativePath) -eq $options.port) ($coreId+' generator emits a native loopback HTTP listener')
