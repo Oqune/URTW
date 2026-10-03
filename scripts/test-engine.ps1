@@ -28,6 +28,14 @@ try {
     Assert-That $true 'Exact owned proxy values are recognized without changing the registry'
     $changed=[pscustomobject]@{ProxyEnable=1;ProxyServer='127.0.0.1:17890';ProxyOverride='<local>';AutoConfigURL='https://example.com/new.pac'}
     Assert-Throws {Assert-ProxyOwnership $changed $applied} 'An external PAC change prevents proxy restoration'
+    $coreRecord=[pscustomobject]@{config='selected.yaml';port=17890}
+    $selection=[pscustomobject]@{active_config='selected.yaml';mihomo_port=17890}
+    Assert-RunningMihomoSelection $selection $coreRecord
+    Assert-That $true 'Matching running profile and port are accepted without registry writes'
+    $selection.active_config='different.yaml'
+    Assert-Throws {Assert-RunningMihomoSelection $selection $coreRecord} 'Windows Proxy cannot target a future selected profile'
+    $selection.active_config='selected.yaml';$selection.mihomo_port=17891
+    Assert-Throws {Assert-RunningMihomoSelection $selection $coreRecord} 'Windows Proxy cannot target a future selected port'
     $wg=Join-Path $runtime 'test.conf'
     $profile="[Interface]`nPrivateKey = $(New-TestKey)`nAddress = 10.0.0.2/32, fd00::2/128`nDNS = 1.1.1.1`n[Peer]`nPublicKey = $(New-TestKey)`nEndpoint = [2001:db8::1]:51820`nAllowedIPs = 0.0.0.0/0, ::/0`nPersistentKeepalive = 25`n"
     [IO.File]::WriteAllText($wg,$profile)
@@ -78,6 +86,14 @@ try {
         Assert-That (-not(Test-Port $testPort)) 'Isolated core stops and releases its listener'
         $after=Get-ItemProperty -LiteralPath $proxyKey | Select-Object ProxyEnable,ProxyServer,ProxyOverride,AutoConfigURL | ConvertTo-Json -Compress
         Assert-That ($before -eq $after) 'Isolated integration leaves Windows proxy settings unchanged'
+        $telegramConfigHash=(Get-FileHash -LiteralPath (Get-TgConfigPath)).Hash
+        Install-Component 'telegram'
+        $manifest=Get-Content -LiteralPath (Join-Path $project 'components.lock.json') -Raw | ConvertFrom-Json
+        Assert-That ((Get-FileHash -LiteralPath (Join-Path $runtime 'tools\telegram\TgWsProxy_windows.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -eq $manifest.telegram.amd64.sha256) 'Telegram installer preserves the verified upstream binary'
+        Assert-That ((Get-FileHash -LiteralPath (Get-TgConfigPath)).Hash -eq $telegramConfigHash -and -not(Get-OwnedProcess 'telegram')) 'Telegram installation preserves its private config and does not start it'
+        Install-Component 'zapret'
+        Assert-That (Test-Path -LiteralPath (Join-Path $runtime 'tools\zapret\service.bat')) 'Zapret installer extracts the original upstream service manager'
+        Assert-Throws {Install-Component 'zapret'} 'Zapret package replacement requires upstream management'
     }
     ${function:Test-MihomoConfig}=$originalValidator
     Write-Host "$script:checks engine checks passed."

@@ -13,6 +13,9 @@ portable x64/ARM64 releases with signed tags and detached GPG checksum signature
 - Startup reads status only. Installing, selecting, starting and stopping are
   distinct operations. Selecting a profile never restarts a service.
 - Only recorded processes with the matching executable path can be stopped.
+- Record the running Mihomo port separately from the next selected profile.
+  Diagnostics use the running port; Windows Proxy activation rejects a selection
+  that differs from the running core. Re-select changed mixed-port values before start.
 - Native file picker supports Mihomo YAML and single-peer WireGuard profiles.
 - Profiles and Telegram secrets are private runtime data, never release assets.
 - Zapret management opens upstream `service.bat`. No preset picker or automatic
@@ -37,4 +40,6 @@ Format, clippy, Rust tests, PowerShell parser and isolated engine tests; secret
 scan of source and portable ZIPs; consistent VERSION/Cargo/tag; bilingual docs;
 architecture table and verification guide. CI builds all supported architectures
 and creates draft releases. Publication requires verified GPG-signed checksums.
-
+Isolated integration installs each x64 upstream package without launching
+Telegram or Zapret, checks Telegram config preservation and refuses Zapret
+package replacement that could overwrite customized upstream files.

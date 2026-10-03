@@ -50,8 +50,11 @@ The importer accepts a constrained single-peer WireGuard format and produces
 private Mihomo YAML. Arbitrary YAML remains under its owner's control. Provider
 paths resolve against the runtime `mihomo-data` home; absolute external paths
 work. No IDE, adapter-metric, firewall or global shell-environment synchronization
-is performed. Enabling the Windows proxy snapshots its original values and
-restores them only if the URT proxy server is still selected.
+is performed. Running Mihomo records include the original listening port;
+selecting another profile does not redirect diagnostics to its future port.
+Enabling Windows Proxy requires the selection to match the running core,
+snapshots the original values and restores them only while all applied proxy
+values still match the recorded ownership state.
 
 Browser PAC rules are independent from optional process rules. The generated
 Mihomo domain union includes browser VPN suffixes, so selected PAC requests can

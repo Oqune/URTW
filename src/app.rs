@@ -141,9 +141,11 @@ impl App {
             self.notify("Diagnostics are already running", false);
             return;
         }
-        let port = self
-            .diag_via_proxy
-            .then_some(self.snapshot.settings.mihomo_port);
+        let port = self.diag_via_proxy.then_some(
+            self.snapshot
+                .running_mihomo_port
+                .unwrap_or(self.snapshot.settings.mihomo_port),
+        );
         let tester = match NetworkTester::new(port) {
             Ok(t) => t,
             Err(e) => {

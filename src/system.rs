@@ -57,6 +57,8 @@ struct ProcessRecord {
     start_time: u64,
     #[serde(default)]
     config: Option<PathBuf>,
+    #[serde(default)]
+    port: u16,
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -133,6 +135,15 @@ pub fn inspect(paths: &Paths) -> Snapshot {
                 .is_file(),
             Component::Zapret => paths.root.join("tools/zapret/service.bat").is_file(),
         };
+        let listen_port = if component == Component::Mihomo && owned.is_some() {
+            record
+                .as_ref()
+                .map(|r| r.port)
+                .filter(|p| *p > 0)
+                .unwrap_or(port)
+        } else {
+            port
+        };
         let state = Service {
             installed,
             running: process.is_some(),
@@ -140,7 +151,7 @@ pub fn inspect(paths: &Paths) -> Snapshot {
             listening: if port == 0 {
                 process.is_some()
             } else {
-                port_open(port)
+                port_open(listen_port)
             },
             pid: process.map(|p| p.pid().as_u32()),
             memory_mb: process.map_or(0, |p| p.memory() / (1024 * 1024)),
@@ -150,6 +161,7 @@ pub fn inspect(paths: &Paths) -> Snapshot {
             Component::Mihomo => {
                 snapshot.mihomo = state;
                 if owned.is_some() {
+                    snapshot.running_mihomo_port = Some(listen_port);
                     snapshot.running_config = record.and_then(|r| r.config);
                 }
             }

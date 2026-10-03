@@ -117,6 +117,7 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub installed_versions: std::collections::BTreeMap<String, String>,
     pub running_config: Option<PathBuf>,
+    pub running_mihomo_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

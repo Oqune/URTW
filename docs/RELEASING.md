@@ -21,6 +21,9 @@ git push origin v1.0.0
 powershell -File scripts/publish-release.ps1 -Version 1.0.0
 ```
 
+If GPG is not on PATH, pass its installed executable with `-Gpg`, for example
+`-Gpg "C:\Program Files\Git\usr\bin\gpg.exe"`. This selects the existing local keyring.
+
 The gate verifies the signed tag and successful CI commit, downloads the draft
 archives and SHA256SUMS, recomputes every hash, runs the packaged secret scan,
 signs the exact manifest with GPG, verifies that signature, attaches it and

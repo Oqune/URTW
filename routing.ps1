@@ -82,8 +82,8 @@ function Get-OwnedProcess([string]$Name) {
     if(-not $process.Path.StartsWith($expected+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Recorded process is outside this runtime.'}
     return $process
 }
-function Save-Process([string]$Name,$Process,[string]$Configuration='') {
-    $record=@{pid=$Process.Id;path=$Process.Path;start_time=([DateTimeOffset]$Process.StartTime.ToUniversalTime()).ToUnixTimeSeconds();config=$Configuration}
+function Save-Process([string]$Name,$Process,[string]$Configuration='',[int]$ListenPort=0) {
+    $record=@{pid=$Process.Id;path=$Process.Path;start_time=([DateTimeOffset]$Process.StartTime.ToUniversalTime()).ToUnixTimeSeconds();config=$Configuration;port=$ListenPort}
     Write-AtomicText (Join-Path $Root ($Name+'.pid.json')) ($record | ConvertTo-Json) -Private
 }
 function Stop-OwnedProcess([string]$Name) {
@@ -181,6 +181,18 @@ function Test-MihomoConfig([string]$Configuration) {
     $output=& $exe -t -d (Join-Path $Root 'mihomo-data') -f $Configuration 2>&1
     if($LASTEXITCODE -ne 0){throw 'Mihomo rejected the configuration. Validate the selected YAML locally; credentials are not printed by URT.'}
 }
+function Get-MihomoMixedPort([string]$Configuration) {
+    $text=Get-Content -LiteralPath $Configuration -Raw
+    if($text -notmatch '(?m)^mixed-port:\s*(\d+)\s*(?:#.*)?$'){throw 'URT requires an explicit top-level mixed-port in the selected YAML.'}
+    $mixedPort=[int]$matches[1];if($mixedPort -lt 1 -or $mixedPort -gt 65535){throw 'Invalid mixed-port.'}
+    return $mixedPort
+}
+function Assert-RunningMihomoSelection($Settings,$Record) {
+    $portProperty=$Record.PSObject.Properties['port']
+    if(-not $portProperty -or $Record.port -ne $Settings.mihomo_port -or -not[string]::Equals($Record.config,$Settings.active_config,[StringComparison]::OrdinalIgnoreCase)){
+        throw 'The selected profile differs from the running core. Stop and start managed Mihomo before enabling Windows Proxy.'
+    }
+}
 function Select-Configuration([string]$Source) {
     if(-not(Test-Path -LiteralPath $Source -PathType Leaf)){throw 'Configuration file does not exist.'}
     $sourceFull=(Get-Item -LiteralPath $Source).FullName;$ext=[IO.Path]::GetExtension($sourceFull).ToLowerInvariant()
@@ -193,9 +205,7 @@ function Select-Configuration([string]$Source) {
         Write-AtomicText $candidate (New-WireGuardYaml $profile) -Private;$imported=$true
     } elseif($ext -notin @('.yaml','.yml')){throw 'Choose a Mihomo YAML or a single-peer WireGuard .conf file.'}
     try {Test-MihomoConfig $candidate} catch {if($imported){Remove-Item -LiteralPath (Assert-RuntimePath $candidate) -Force};throw}
-    $text=Get-Content -LiteralPath $candidate -Raw
-    if($text -notmatch '(?m)^mixed-port:\s*(\d+)\s*(?:#.*)?$'){throw 'URT requires an explicit top-level mixed-port in the selected YAML.'}
-    $mixedPort=[int]$matches[1];if($mixedPort -lt 1 -or $mixedPort -gt 65535){throw 'Invalid mixed-port.'}
+    $mixedPort=Get-MihomoMixedPort $candidate
     $s=Read-Settings;$s.active_config=$candidate;$s.profiles=@(@($s.profiles)+@($candidate) | Select-Object -Unique);$s.mihomo_port=$mixedPort
     Save-Settings $s;if($imported){Write-BrowserPac}
     Write-ProgressEvent 100 'Selection saved; start or stop/start Mihomo to apply'
@@ -203,6 +213,7 @@ function Select-Configuration([string]$Source) {
 function Start-Mihomo {
     if(Get-OwnedProcess 'mihomo'){throw 'Managed Mihomo is already running. Stop it before applying a different selection.'}
     $s=Read-Settings;if(-not $s.active_config){throw 'Select a configuration first.'}
+    if((Get-MihomoMixedPort $s.active_config) -ne $s.mihomo_port){throw 'The profile mixed-port changed; re-select it before starting Mihomo.'}
     Test-MihomoConfig $s.active_config
     if(Test-Port $s.mihomo_port){throw 'The selected Mihomo port is occupied by another process. URT will not stop it.'}
     $text=Get-Content -LiteralPath $s.active_config -Raw
@@ -213,7 +224,7 @@ function Start-Mihomo {
     }
     Write-ProgressEvent 65 'Starting the selected Mihomo profile'
     $p=Start-Process -FilePath (Get-MihomoExe) -ArgumentList @('-d',('"'+(Join-Path $Root 'mihomo-data')+'"'),'-f',('"'+$s.active_config+'"')) -WorkingDirectory (Join-Path $Root 'tools\mihomo') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $Root 'logs\mihomo.out.log') -RedirectStandardError (Join-Path $Root 'logs\mihomo.err.log') -PassThru
-    Save-Process 'mihomo' $p $s.active_config
+    Save-Process 'mihomo' $p $s.active_config $s.mihomo_port
     for($i=0;$i -lt 50;$i++) {Start-Sleep -Milliseconds 200;$p.Refresh();if($p.HasExited){throw 'Mihomo exited during startup; inspect the runtime component log.'};if(Test-Port $s.mihomo_port){Write-ProgressEvent 100 'Mihomo listener is ready; connectivity is checked separately';return}}
     Stop-OwnedProcess 'mihomo';throw 'Mihomo did not open its listener within 10 seconds.'
 }
@@ -337,7 +348,10 @@ function Apply-ProxyValues([string]$Key,$Values) {
     foreach($p in $Values.PSObject.Properties){if($p.Value.exists){$type=if($p.Name -eq 'ProxyEnable'){'DWord'}else{'String'};New-ItemProperty -LiteralPath $Key -Name $p.Name -Value $p.Value.value -PropertyType $type -Force | Out-Null}else{Remove-ItemProperty -LiteralPath $Key -Name $p.Name -ErrorAction SilentlyContinue}}
 }
 function Enable-SystemProxy {
-    $s=Read-Settings;if(-not(Get-OwnedProcess 'mihomo') -or -not(Test-Port $s.mihomo_port)){throw 'Start the managed Mihomo listener before enabling the Windows proxy.'}
+    $s=Read-Settings;if(-not(Get-OwnedProcess 'mihomo')){throw 'Start the managed Mihomo listener before enabling the Windows proxy.'}
+    $record=Get-Content -LiteralPath (Join-Path $Root 'mihomo.pid.json') -Raw | ConvertFrom-Json
+    Assert-RunningMihomoSelection $s $record
+    if(-not(Test-Port $record.port)){throw 'The managed Mihomo listener is unavailable.'}
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings';$backupFile=Join-Path $Root 'proxy-backup.json'
     if(Test-Path -LiteralPath $backupFile){throw 'A proxy restore snapshot already exists; restore it before enabling again.'}
     $old=Get-ItemProperty -LiteralPath $key;$values=Get-ProxyValues $old

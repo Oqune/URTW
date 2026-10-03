@@ -13,7 +13,7 @@ The source and ZIP credential scanner reports file/rule names without values.
 - Eight Rust tests: responsive tab rendering, modal/operation states, selection
   scrolling and Unicode width; diagnostic completion with errors; loopback HTTP
   response behavior and numeric progress boundaries.
-- 32 isolated PowerShell checks: private ACLs, settings serialization, runtime
+- 39 isolated PowerShell checks: private ACLs, settings serialization, runtime
   path boundaries, proxy ownership comparison, strict synthetic WireGuard import,
   SHA-256 verified downloads, actual Mihomo config validation, archive traversal
   rejection and process ownership.
