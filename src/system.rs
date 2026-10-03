@@ -92,8 +92,12 @@ struct ProcessRecord {
     port: u16,
 }
 fn same_path(a: &Path, b: &Path) -> bool {
-    let a = std::path::absolute(a).unwrap_or_else(|_| a.into());
-    let b = std::path::absolute(b).unwrap_or_else(|_| b.into());
+    let a = fs::canonicalize(a)
+        .or_else(|_| std::path::absolute(a))
+        .unwrap_or_else(|_| a.into());
+    let b = fs::canonicalize(b)
+        .or_else(|_| std::path::absolute(b))
+        .unwrap_or_else(|_| b.into());
     a.components()
         .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())
         .eq(b
@@ -465,6 +469,12 @@ mod tests {
             Ok(())
         };
         let bytes = fs::read(root.join("workspace.json"));
+        let saved: serde_json::Value = serde_json::from_slice(bytes.as_ref().unwrap()).unwrap();
+        let profile_matches = saved["profiles"].as_array().unwrap().iter().any(|p| {
+            p["path"]
+                .as_str()
+                .is_some_and(|path| same_path(Path::new(path), &native))
+        });
         assert_eq!(root.parent(), Some(base.as_path()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
@@ -479,12 +489,6 @@ mod tests {
                 .iter()
                 .any(|s| s["name"] == "Тест Unicode")
         );
-        assert!(
-            value["profiles"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|p| p["path"] == native.to_string_lossy().as_ref())
-        );
+        assert!(profile_matches);
     }
 }
