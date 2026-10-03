@@ -2,6 +2,9 @@
 /dist/
 /artifacts/
 /runtime/
+/data/
+/backups/
+/installed-paths.json
 /tools/
 /logs/
 /.qa/
@@ -24,10 +27,11 @@
 *.bak
 settings.json
 config.json
+workspace.json
+urt-location.json
 installed.json
 *.pid.json
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-

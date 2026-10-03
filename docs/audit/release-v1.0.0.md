@@ -34,4 +34,4 @@ and packaged in CI; native ARM64 hardware execution remains unverified.
 
 GPG signs the Git tag and checksum manifest. The Windows executables do not
 carry an Authenticode signature. Upstream component archives use pinned SHA-256
-digests; their licensing and signing are independent from URT.
+digests; their licensing and signing are independent from URTW.

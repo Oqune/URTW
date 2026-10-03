@@ -8,7 +8,7 @@ clippy, Rust tests, PowerShell tests and source/release secret checks.
 
 ## Contract-Locked SemVer
 
-URT adopts Impulse's contract-major version discipline:
+URTW adopts Impulse's contract-major version discipline:
 `v<ContractMajor>.<FeatureMinor>.<Patch>`.
 
 - **ContractMajor** increments when the public CLI, persisted settings schema or
@@ -19,7 +19,7 @@ URT adopts Impulse's contract-major version discipline:
 - Impulse's E2EE protocol major is not inherited by this independent product.
 
 `VERSION`, `Cargo.toml`, signed Git tag and release title must agree. Tags are
-strictly `vX.Y.Z`; titles are `URT vX.Y.Z`. Notes are English/Russian, contain no
+strictly `vX.Y.Z`; titles are `URTW vX.Y.Z`. Notes are English/Russian, contain no
 emoji, include architecture tables with direct artifact links and describe
 meaningful limits. Published releases and tags are immutable; fixes get new versions.
 

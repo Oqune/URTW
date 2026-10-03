@@ -1,5 +1,15 @@
 {
   "schema_version": 1,
+  "singbox": {
+    "version":"v1.14.2","repository":"https://github.com/SagerNet/sing-box",
+    "amd64":{"url":"https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-windows-amd64.zip","sha256":"c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d32"},
+    "arm64":{"url":"https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-windows-arm64.zip","sha256":"2bb467039310452380958b821983d5bb4f78fb70a2583914e4bea8b011582b64"}
+  },
+  "xray": {
+    "version":"v26.3.27","repository":"https://github.com/XTLS/Xray-core",
+    "amd64":{"url":"https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-64.zip","sha256":"d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad"},
+    "arm64":{"url":"https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-arm64-v8a.zip","sha256":"35d4ed6ec21224fb22b07c2c3f672e2350cd536f2c74d309150175a76365ea88"}
+  },
   "mihomo": {
     "version": "v1.19.32",
     "repository": "https://github.com/MetaCubeX/mihomo",

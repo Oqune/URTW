@@ -13,7 +13,7 @@ $fingerprint=(Get-Content -LiteralPath (Join-Path $project 'SIGNING_KEY_FINGERPR
 if($fingerprint -notmatch '^[A-F0-9]{40}$'){throw 'Invalid signing key fingerprint.'}
 $manifest=Get-Content -LiteralPath (Join-Path $project 'components.lock.json') -Raw | ConvertFrom-Json
 if($manifest.schema_version -ne 1){throw 'Unsupported download manifest schema.'}
-foreach($name in @('mihomo','telegram','zapret')){
+foreach($name in @('mihomo','singbox','xray','telegram','zapret')){
     $component=$manifest.$name
     foreach($arch in @('amd64','arm64','wintun')){
         $p=$component.PSObject.Properties[$arch]

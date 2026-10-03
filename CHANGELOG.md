@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-10-03
+
+- Rename to URTW, the Windows companion to URTA; retain compatible CLI/settings.
+- Add sing-box and Xray with real native validation and isolated startup tests.
+- Private endpoint library, ordered routing standards and separate browser PAC.
+- Per-core profiles, DNS, ports, supported TUN and logging options; private editable copies.
+- Config path input/paste and native picker; selection before installing the core.
+- Ten responsive views, portable data and explicit folder choice, authors/credits.
+- Private backups, recovery, explicit core autostart and custom native adapters.
+- Correct progress return handling and Windows process identity/path comparison.
+- Preserve deployed native rules, settings, component paths and existing autostart.
+
 ## 1.0.0 — 2026-10-03
 
 - Public source extraction with private runtime data kept outside release assets.

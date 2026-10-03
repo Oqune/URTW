@@ -1,10 +1,10 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status','SelectConfig','Install','StartMihomo','StopMihomo','StartTG','StopTG','OpenZapret','CopyTGLink','OpenTelegram','EditTG','SetTGPort','EnableProxy','DisableProxy','None')]
+    [ValidateSet('Status','SelectConfig','Install','StartMihomo','StopMihomo','StartTG','StopTG','OpenZapret','CopyTGLink','OpenTelegram','EditTG','SetTGPort','EnableProxy','DisableProxy','Request','Boot','None')]
     [string]$Command='Status',
-    [string]$Root=(Join-Path $env:LOCALAPPDATA 'URT'),
+    [string]$Root=(Join-Path $env:LOCALAPPDATA 'URTW'),
     [string]$Path,
-    [ValidateSet('mihomo','telegram','zapret')][string]$Component,
+    [ValidatePattern('^[a-z][a-z0-9_-]{1,31}$')][string]$Component,
     [ValidateRange(1024,65535)][int]$Port=1443
 )
 Set-StrictMode -Version Latest
@@ -13,7 +13,7 @@ $Assets=$PSScriptRoot
 $Root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 
-function Write-ProgressEvent([int]$Percent,[string]$Message) { Write-Output "URT_PROGRESS|$Percent|$Message" }
+function Write-ProgressEvent([int]$Percent,[string]$Message) { [Console]::WriteLine("URT_PROGRESS|$Percent|$Message") }
 function Assert-RuntimePath([string]$Candidate) {
     $full=[IO.Path]::GetFullPath($Candidate)
     if(-not $full.StartsWith($Root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Refusing a write outside the selected runtime.'}
@@ -76,14 +76,18 @@ function Get-OwnedProcess([string]$Name) {
     $r=Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
     $process=Get-Process -Id $r.pid -ErrorAction SilentlyContinue
     if(-not $process){return $null}
-    $started=([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeSeconds()
-    if(-not [string]::Equals($process.Path,$r.path,[StringComparison]::OrdinalIgnoreCase) -or $started -ne $r.start_time){throw 'Process ownership changed; refusing to control it.'}
-    $expected=Join-Path $Root ('tools\'+$Name)
-    if(-not $process.Path.StartsWith($expected+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Recorded process is outside this runtime.'}
+    $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$r.pid)
+    if(-not $identity -or -not $identity.ExecutablePath){throw 'Cannot verify process identity; refusing to control it.'}
+    $started=([DateTimeOffset]$identity.CreationDate.ToUniversalTime()).ToUnixTimeSeconds()
+    if(-not [string]::Equals($identity.ExecutablePath,$r.path,[StringComparison]::OrdinalIgnoreCase) -or $started -ne $r.start_time){throw 'Process ownership changed; refusing to control it.'}
+    $expected=if($Name -eq 'telegram'){Get-TgExe}else{Get-CoreExe $Name}
+    if(-not[string]::Equals([IO.Path]::GetFullPath($identity.ExecutablePath),[IO.Path]::GetFullPath($expected),[StringComparison]::OrdinalIgnoreCase)){throw 'Recorded executable does not match this runtime adapter.'}
     return $process
 }
 function Save-Process([string]$Name,$Process,[string]$Configuration='',[int]$ListenPort=0) {
-    $record=@{pid=$Process.Id;path=$Process.Path;start_time=([DateTimeOffset]$Process.StartTime.ToUniversalTime()).ToUnixTimeSeconds();config=$Configuration;port=$ListenPort}
+    $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$Process.Id)
+    if(-not $identity -or -not $identity.ExecutablePath){throw 'Cannot record the launched process identity.'}
+    $record=@{pid=$Process.Id;path=$identity.ExecutablePath;start_time=([DateTimeOffset]$identity.CreationDate.ToUniversalTime()).ToUnixTimeSeconds();config=$Configuration;port=$ListenPort}
     Write-AtomicText (Join-Path $Root ($Name+'.pid.json')) ($record | ConvertTo-Json) -Private
 }
 function Stop-OwnedProcess([string]$Name) {
@@ -173,17 +177,17 @@ function Write-BrowserPac {
     $lines.Add('  return "DIRECT";');$lines.Add('}')
     Write-AtomicText (Join-Path $Root 'browser-routing.pac') ($lines -join "`n") -Private
 }
-function Get-MihomoExe {return (Join-Path $Root 'tools\mihomo\mihomo.exe')}
+function Get-MihomoExe {return (Get-CoreExe 'mihomo')}
 function Test-MihomoConfig([string]$Configuration) {
     $exe=Get-MihomoExe
     if(-not(Test-Path -LiteralPath $exe)){throw 'Install Mihomo before selecting and validating a configuration.'}
     Write-ProgressEvent 45 'Validating configuration with Mihomo'
     $output=& $exe -t -d (Join-Path $Root 'mihomo-data') -f $Configuration 2>&1
-    if($LASTEXITCODE -ne 0){throw 'Mihomo rejected the configuration. Validate the selected YAML locally; credentials are not printed by URT.'}
+    if($LASTEXITCODE -ne 0){throw 'Mihomo rejected the configuration. Validate the selected YAML locally; credentials are not printed by URTW.'}
 }
 function Get-MihomoMixedPort([string]$Configuration) {
     $text=Get-Content -LiteralPath $Configuration -Raw
-    if($text -notmatch '(?m)^mixed-port:\s*(\d+)\s*(?:#.*)?$'){throw 'URT requires an explicit top-level mixed-port in the selected YAML.'}
+    if($text -notmatch '(?m)^mixed-port:\s*(\d+)\s*(?:#.*)?$'){throw 'URTW requires an explicit top-level mixed-port in the selected YAML.'}
     $mixedPort=[int]$matches[1];if($mixedPort -lt 1 -or $mixedPort -gt 65535){throw 'Invalid mixed-port.'}
     return $mixedPort
 }
@@ -215,12 +219,12 @@ function Start-Mihomo {
     $s=Read-Settings;if(-not $s.active_config){throw 'Select a configuration first.'}
     if((Get-MihomoMixedPort $s.active_config) -ne $s.mihomo_port){throw 'The profile mixed-port changed; re-select it before starting Mihomo.'}
     Test-MihomoConfig $s.active_config
-    if(Test-Port $s.mihomo_port){throw 'The selected Mihomo port is occupied by another process. URT will not stop it.'}
+    if(Test-Port $s.mihomo_port){throw 'The selected Mihomo port is occupied by another process. URTW will not stop it.'}
     $text=Get-Content -LiteralPath $s.active_config -Raw
     $tunBlock=[regex]::Match($text,'(?ms)^tun:\s*(?:\{[^\r\n]*\}|\r?\n(?:[ \t]+[^\r\n]*\r?\n?)*)').Value
     if($tunBlock -match '(?i)enable:\s*true'){
         $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if(-not $admin){throw 'This profile enables TUN. Open URT in an Administrator terminal before starting it.'}
+        if(-not $admin){throw 'This profile enables TUN. Open URTW in an Administrator terminal before starting it.'}
     }
     Write-ProgressEvent 65 'Starting the selected Mihomo profile'
     $p=Start-Process -FilePath (Get-MihomoExe) -ArgumentList @('-d',('"'+(Join-Path $Root 'mihomo-data')+'"'),'-f',('"'+$s.active_config+'"')) -WorkingDirectory (Join-Path $Root 'tools\mihomo') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $Root 'logs\mihomo.out.log') -RedirectStandardError (Join-Path $Root 'logs\mihomo.err.log') -PassThru
@@ -228,7 +232,8 @@ function Start-Mihomo {
     for($i=0;$i -lt 50;$i++) {Start-Sleep -Milliseconds 200;$p.Refresh();if($p.HasExited){throw 'Mihomo exited during startup; inspect the runtime component log.'};if(Test-Port $s.mihomo_port){Write-ProgressEvent 100 'Mihomo listener is ready; connectivity is checked separately';return}}
     Stop-OwnedProcess 'mihomo';throw 'Mihomo did not open its listener within 10 seconds.'
 }
-function Get-TgConfigPath {return (Join-Path $Root 'tools\telegram\TgWsProxy_data\config.json')}
+function Get-TgExe {return (Resolve-InstalledPath 'telegram' (Join-Path $Root 'tools\telegram\TgWsProxy_windows.exe'))}
+function Get-TgConfigPath {return (Join-Path (Split-Path -Parent (Get-TgExe)) 'TgWsProxy_data\config.json')}
 function Ensure-TgConfig {
     $file=Get-TgConfigPath
     if(Test-Path -LiteralPath $file){return (Get-Content -LiteralPath $file -Raw | ConvertFrom-Json)}
@@ -238,12 +243,12 @@ function Ensure-TgConfig {
     Write-AtomicText $file ($cfg | ConvertTo-Json -Depth 8) -Private;return $cfg
 }
 function Start-Telegram {
-    $exe=Join-Path $Root 'tools\telegram\TgWsProxy_windows.exe'
+    $exe=Get-TgExe
     if(-not(Test-Path -LiteralPath $exe)){throw 'Install TG WS Proxy first.'}
     if(Get-OwnedProcess 'telegram'){throw 'Managed TG WS Proxy is already running.'}
     if(Get-Process -Name 'TgWsProxy_windows','TgWsProxy_windows_arm64' -ErrorAction SilentlyContinue){throw 'An external TG WS Proxy instance is already running. Manage it in its tray; upstream allows one instance per user.'}
     $cfg=Ensure-TgConfig
-    if($cfg.host -ne '127.0.0.1'){throw 'URT managed Telegram profiles must listen on 127.0.0.1.'}
+    if($cfg.host -ne '127.0.0.1'){throw 'URTW managed Telegram profiles must listen on 127.0.0.1.'}
     if(Test-Port $cfg.port){throw 'The Telegram port is occupied by another process.'}
     $s=Read-Settings;$s.tg_port=[int]$cfg.port;Save-Settings $s
     Write-ProgressEvent 50 'Launching the official Telegram tray application'
@@ -260,6 +265,7 @@ function Get-TelegramLink {
 }
 function Set-TelegramPort([int]$Value) {
     if(Get-OwnedProcess 'telegram'){throw 'Stop the managed Telegram proxy before changing its port.'}
+    if(Test-Port (Read-Settings).tg_port){throw 'The Telegram listener is active; stop it in its tray before editing its port.'}
     if(Test-Port $Value){throw 'The requested local port is occupied.'}
     $cfg=Ensure-TgConfig;$cfg.port=$Value
     Write-AtomicText (Get-TgConfigPath) ($cfg | ConvertTo-Json -Depth 8) -Private
@@ -280,11 +286,15 @@ function Download-Verified($Asset,[string]$Destination) {
 }
 function Install-Component([string]$Name) {
     if(Get-OwnedProcess $Name){throw 'Stop the managed component before replacing its binary.'}
-    $arch=if($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64'){'arm64'}elseif([Environment]::Is64BitOperatingSystem){'amd64'}else{throw 'URT supports x64 and ARM64 Windows only.'}
+    $arch=if($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64'){'arm64'}elseif([Environment]::Is64BitOperatingSystem){'amd64'}else{throw 'URTW supports x64 and ARM64 Windows only.'}
     $manifest=Get-Content -LiteralPath (Join-Path $Assets 'components.lock.json') -Raw | ConvertFrom-Json
+    if(-not $manifest.PSObject.Properties[$Name]){throw 'Custom adapters use B on Cores to install a trusted local binary.'}
     $item=$manifest.$Name;$property=$item.PSObject.Properties[$arch]
     if(-not $property){throw 'This component is unavailable for the current Windows architecture.'}
     $target=Join-Path $Root ('tools\'+$Name)
+    $activeExe=if($Name -eq 'telegram'){Get-TgExe}elseif($Name -ne 'zapret'){Get-CoreExe $Name}else{Join-Path $target 'bin\winws.exe'}
+    if(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and [string]::Equals($_.ExecutablePath,$activeExe,[StringComparison]::OrdinalIgnoreCase)}){throw 'The component executable is running; stop it explicitly before replacing binaries.'}
+    $aliasesFile=Join-Path $Root 'installed-paths.json';if(Test-Path -LiteralPath $aliasesFile){$aliases=Get-Content -LiteralPath $aliasesFile -Raw | ConvertFrom-Json;if($aliases.PSObject.Properties[$Name]){throw 'An existing installation alias is present. Preserve its binaries or install in a new runtime folder.'}}
     if($Name -eq 'zapret' -and (Test-Path -LiteralPath (Join-Path $target 'service.bat'))){throw 'An existing Zapret package is present. Use its upstream manager for updates to preserve custom strategies and lists.'}
     $stage=Assert-RuntimePath (Join-Path $Root ('staging-'+[guid]::NewGuid().ToString('N')))
     New-Item -ItemType Directory -Path $stage | Out-Null
@@ -297,15 +307,20 @@ function Install-Component([string]$Name) {
         if($Name -eq 'telegram') {Copy-Item -LiteralPath $archive -Destination (Join-Path $prepared 'TgWsProxy_windows.exe')}
         else {
             $unpack=Join-Path $stage 'unpack';Expand-CheckedZip $archive $unpack
-            if($Name -eq 'mihomo') {
+            if($Name -notin @('telegram','zapret')) {
+                $definition=Get-Core $Name
                 $exe=Get-ChildItem -LiteralPath $unpack -Recurse -File | Where-Object {$_.Name -match '^mihomo.*\.exe$'} | Select-Object -First 1
+                if($Name -ne 'mihomo'){$exe=Get-ChildItem -LiteralPath $unpack -Recurse -File | Where-Object {$_.Name -eq $definition.executable} | Select-Object -First 1}
                 if(-not $exe){throw 'Mihomo executable missing from the verified archive.'}
-                Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $prepared 'mihomo.exe')
+                Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $prepared $definition.executable)
+                foreach($vendorFile in (Get-ChildItem -LiteralPath $exe.DirectoryName -File | Where-Object {$_.Name -match '^(LICENSE|COPYING|NOTICE)' -or $_.Extension -in @('.dat','.dll')})){Copy-Item -LiteralPath $vendorFile.FullName -Destination $prepared}
+                if($Name -eq 'mihomo'){
                 Write-ProgressEvent 70 'Downloading the pinned signed Wintun driver'
                 $wzip=Join-Path $stage 'wintun.zip';Download-Verified $item.wintun $wzip
                 $wdir=Join-Path $stage 'wintun';Expand-CheckedZip $wzip $wdir
                 Copy-Item -LiteralPath (Join-Path $wdir ('wintun\bin\'+$arch+'\wintun.dll')) -Destination (Join-Path $prepared 'wintun.dll')
                 $license=Join-Path $wdir 'wintun\LICENSE.txt';if(Test-Path -LiteralPath $license){Copy-Item -LiteralPath $license -Destination (Join-Path $prepared 'WINTUN-LICENSE.txt')}
+                }
             } else {
                 $manager=Get-ChildItem -LiteralPath $unpack -Recurse -Filter service.bat -File | Select-Object -First 1
                 if(-not $manager){throw 'service.bat missing from the verified archive.'}
@@ -368,6 +383,7 @@ function Restore-SystemProxy {
     Notify-ProxyChange;Remove-Item -LiteralPath (Assert-RuntimePath $backupFile) -Force
 }
 
+. (Join-Path $Assets 'modules\workspace.ps1')
 if($Command -eq 'None'){return}
 try {
     if($Command -ne 'Status'){Initialize-Runtime}
@@ -389,6 +405,8 @@ try {
         }
         'EnableProxy' {Enable-SystemProxy}
         'DisableProxy' {Restore-SystemProxy}
+        'Boot' {$w=Read-Workspace;if(-not(Get-OwnedProcess $w.active_core)){Start-SelectedCore $w.active_core}}
+        'Request' { $requestText=[Console]::In.ReadToEnd();if($requestText.Length -gt 1048576){throw 'Workspace request is too large.'};try{$request=$requestText | ConvertFrom-Json}catch{throw 'Invalid workspace request.'};Invoke-WorkspaceRequest $request }
     }
 } catch {
     [Console]::Error.WriteLine('URT_ERROR|'+$_.Exception.Message)

@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Block, BorderType, Borders, Clear, Gauge, Padding, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, TableState, Tabs, Wrap,
+        ScrollbarOrientation, ScrollbarState, Table, TableState, Wrap,
     },
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -108,7 +108,7 @@ pub fn render(f: &mut Frame, app: &App) {
         body(
             f,
             box_area,
-            "URT",
+            "URTW",
             vec![
                 Line::from(""),
                 Line::from("Reading local component status...").fg(Theme::ACCENT),
@@ -117,43 +117,104 @@ pub fn render(f: &mut Frame, app: &App) {
         );
         return;
     }
-    let rows = sections(
-        area.inner(Margin {
-            horizontal: 1,
-            vertical: if area.height < 24 { 0 } else { 1 },
-        }),
-        [
-            Constraint::Length(3),
-            Constraint::Min(6),
-            Constraint::Length(3),
-        ],
-        Direction::Vertical,
-    );
-    let compact = area.width < 100;
-    let titles: Vec<Line> = Tab::ALL
-        .iter()
-        .enumerate()
-        .map(|(i, t)| {
-            let title = if compact {
-                ["Home", "Files", "Tests", "TG", "DPI", "Tools"][i]
-            } else {
-                t.title()
-            };
-            Line::from(format!("{} {title}", i + 1))
-        })
-        .collect();
-    let tabs = Tabs::new(titles)
-        .block(panel(format!(
-            " URT v{}{} ",
+    let outer = area.inner(Margin {
+        horizontal: 1,
+        vertical: u16::from(area.height >= 24),
+    });
+    let wide = area.width >= 110;
+    let cols = Layout::horizontal(if wide {
+        vec![Constraint::Length(21), Constraint::Min(1)]
+    } else {
+        vec![Constraint::Length(0), Constraint::Min(1)]
+    })
+    .spacing(u16::from(wide))
+    .split(outer);
+    let rows = Layout::vertical([
+        Constraint::Length(if wide { 3 } else { 5 }),
+        Constraint::Min(6),
+        Constraint::Length(3),
+    ])
+    .spacing(1)
+    .split(cols[1]);
+    body(
+        f,
+        rows[0],
+        &format!(
+            "URTW v{}{}",
             env!("CARGO_PKG_VERSION"),
             if app.preview { " / sample preview" } else { "" }
-        )))
-        .select(app.tab.index())
-        .padding("", " ")
-        .divider("│")
-        .style(Style::default().fg(Theme::TEXT_MUTED))
-        .highlight_style(Style::default().fg(Theme::ACCENT).bold());
-    f.render_widget(tabs, rows[0]);
+        ),
+        if wide {
+            vec![
+                Line::from(format!(
+                    "{}  /  {}",
+                    app.tab.title(),
+                    app.snapshot.workspace.active_core
+                ))
+                .fg(Theme::ACCENT),
+            ]
+        } else {
+            (0..2)
+                .map(|row| {
+                    Line::from(
+                        (0..5)
+                            .map(|col| {
+                                let i = row * 5 + col;
+                                let labels = [
+                                    "Home", "Files", "Tests", "TG", "Zapret", "Tools", "Cores",
+                                    "Nodes", "Rules", "Setup",
+                                ];
+                                Span::styled(
+                                    format!("{} {:<6}", if i == 9 { 0 } else { i + 1 }, labels[i]),
+                                    Style::default()
+                                        .fg(if app.tab.index() == i {
+                                            Theme::ACCENT
+                                        } else {
+                                            Theme::TEXT_MUTED
+                                        })
+                                        .add_modifier(if app.tab.index() == i {
+                                            ratatui::style::Modifier::BOLD
+                                        } else {
+                                            ratatui::style::Modifier::empty()
+                                        }),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect()
+        },
+    );
+    if wide {
+        let mut lines = vec![
+            Line::from("URTA companion").fg(Theme::TEXT_MUTED),
+            Line::from(""),
+        ];
+        for (i, tab) in Tab::ALL.iter().enumerate() {
+            lines.push(
+                Line::from(format!(
+                    " {}  {}",
+                    if i == 9 { 0 } else { i + 1 },
+                    tab.title()
+                ))
+                .style(
+                    Style::default()
+                        .fg(if *tab == app.tab {
+                            Theme::ACCENT
+                        } else {
+                            Theme::TEXT_MUTED
+                        })
+                        .bg(if *tab == app.tab {
+                            Theme::BG_SELECTED
+                        } else {
+                            Theme::BG_CARD
+                        }),
+                ),
+            );
+            lines.push(Line::from(""));
+        }
+        body(f, cols[0], "Navigation", lines);
+    }
     match app.tab {
         Tab::Overview => overview(f, app, rows[1]),
         Tab::Profiles => profiles(f, app, rows[1]),
@@ -161,22 +222,47 @@ pub fn render(f: &mut Frame, app: &App) {
         Tab::Telegram => telegram(f, app, rows[1]),
         Tab::Zapret => zapret(f, app, rows[1]),
         Tab::Components => components(f, app, rows[1]),
+        Tab::Cores => cores(f, app, rows[1]),
+        Tab::Endpoints => endpoints(f, app, rows[1]),
+        Tab::Routing => routing(f, app, rows[1]),
+        Tab::Settings => settings(f, app, rows[1]),
     }
     footer(f, app, rows[2]);
-    if let Some(input) = &app.port_input {
-        let popup = centered(48, 7, area);
+    if let Some(input) = &app.input {
+        let height = (input.fields.len() * 2 + 5).min(usize::from(area.height)) as u16;
+        let popup = centered(94, height, area);
         f.render_widget(Clear, popup);
-        body(
-            f,
-            popup,
-            "Telegram local port",
-            vec![
-                Line::from("Enter a port from 1024 to 65535."),
-                Line::from(format!("> {input}_")).fg(Theme::ACCENT),
-                Line::from("Stop the managed proxy before changing it."),
-                Line::from("Enter: save     Esc: cancel").fg(Theme::TEXT_MUTED),
-            ],
-        );
+        let mut lines = vec![
+            Line::from("Tab / Shift+Tab: field  ·  Delete: clear  ·  Enter: save  ·  Esc: cancel")
+                .fg(Theme::TEXT_MUTED),
+        ];
+        for (i, field) in input.fields.iter().enumerate() {
+            lines.push(Line::from(field.label).fg(Theme::TEXT_MUTED));
+            let value = if field.secret {
+                "•".repeat(field.value.chars().count().min(60))
+            } else {
+                field.value.clone()
+            };
+            lines.push(
+                Line::from(fit(
+                    &format!(
+                        "{} {value}{}",
+                        if input.index == i { "›" } else { " " },
+                        if input.index == i { "_" } else { "" }
+                    ),
+                    popup.width.saturating_sub(6) as usize,
+                ))
+                .fg(if input.index == i {
+                    Theme::ACCENT
+                } else {
+                    Theme::TEXT_PRIMARY
+                }),
+            );
+        }
+        if input.fields.is_empty() {
+            lines.push(Line::from("Enter confirms. Esc cancels.").fg(Theme::WARNING));
+        }
+        body(f, popup, input.title, lines);
     }
 }
 
@@ -185,11 +271,25 @@ fn overview(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
     let mut rows = Vec::new();
-    for (name, svc) in [
-        ("Mihomo", &app.snapshot.mihomo),
+    let mut services: Vec<(&str, &Service)> = app
+        .snapshot
+        .cores
+        .iter()
+        .filter_map(|c| {
+            app.snapshot
+                .core_states
+                .get(&c.id)
+                .map(|s| (c.name.as_str(), &s.service))
+        })
+        .collect();
+    if services.is_empty() {
+        services.push(("Mihomo", &app.snapshot.mihomo));
+    }
+    services.extend([
         ("TG WS Proxy", &app.snapshot.telegram),
         ("Zapret", &app.snapshot.zapret),
-    ] {
+    ]);
+    for (name, svc) in services {
         let info = svc.pid.map_or_else(
             || "—".into(),
             |pid| {
@@ -217,7 +317,7 @@ fn overview(f: &mut Frame, app: &App, area: Rect) {
             "System route".into()
         },
     ]));
-    let split = Layout::vertical([Constraint::Length(5), Constraint::Min(0)]).split(inner);
+    let split = Layout::vertical([Constraint::Length(7), Constraint::Min(0)]).split(inner);
     let widths = if inner.width >= 90 {
         vec![
             Constraint::Length(15),
@@ -241,11 +341,23 @@ fn overview(f: &mut Frame, app: &App, area: Rect) {
             .column_spacing(1),
         split[0],
     );
-    let config = app.snapshot.settings.active_config.as_ref().map_or_else(
-        || "None — press F to choose".into(),
-        |p| p.display().to_string(),
-    );
+    let config = app
+        .snapshot
+        .workspace
+        .selected_profile()
+        .map(|p| &p.path)
+        .map_or_else(
+            || "None — press F to choose".into(),
+            |p| p.display().to_string(),
+        );
     let mut info = vec![
+        line(
+            "Endpoint",
+            app.snapshot
+                .workspace
+                .endpoint()
+                .map_or("None", |e| e.name.as_str()),
+        ),
         line(
             "Config",
             fit(&config, inner.width.saturating_sub(8) as usize),
@@ -264,7 +376,7 @@ fn overview(f: &mut Frame, app: &App, area: Rect) {
     if area.height >= 15 {
         info.push(Line::from(""));
         info.push(
-            Line::from("External = a process or listener outside this URT runtime.")
+            Line::from("External = a process or listener outside this URTW runtime.")
                 .fg(Theme::WARNING),
         );
         info.push(Line::from(
@@ -296,93 +408,297 @@ fn scrollbar(f: &mut Frame, area: Rect, total: usize, visible: usize, start: usi
     }
 }
 
-fn profiles(f: &mut Frame, app: &App, area: Rect) {
-    let entries = &app.snapshot.settings.profiles;
-    if entries.is_empty() {
-        body(
-            f,
-            area,
-            "Configurations",
-            vec![
-                Line::from("No configuration selected.").fg(Theme::ACCENT),
-                Line::from(""),
-                Line::from("F: choose a Mihomo .yaml/.yml or WireGuard .conf file."),
-                Line::from("YAML files stay in their original location."),
-                Line::from("WireGuard import creates a private runtime YAML profile."),
-                Line::from("Select and validate first; S starts Mihomo separately."),
-            ],
-        );
-        return;
-    }
-    let cols = if area.width >= 110 {
+fn library(
+    f: &mut Frame,
+    app: &App,
+    area: Rect,
+    title: &str,
+    rows: Vec<Vec<String>>,
+    headers: Vec<&str>,
+    details: Vec<Line<'static>>,
+) {
+    let cols = if area.width >= 92 {
         sections(
             area,
-            [Constraint::Percentage(56), Constraint::Percentage(44)],
+            [Constraint::Percentage(55), Constraint::Percentage(45)],
             Direction::Horizontal,
         )
     } else {
         Layout::horizontal([Constraint::Percentage(100)]).split(area)
     };
-    let selected = app.selected[Tab::Profiles.index()].min(entries.len().saturating_sub(1));
-    let block = panel(format!(
-        " Configurations ({}/{}) ",
-        selected + 1,
-        entries.len()
-    ));
-    let height = block.inner(cols[0]).height.saturating_sub(1) as usize;
-    let start = viewport_start(selected, entries.len(), height);
-    let rows = entries.iter().skip(start).take(height).map(|path| {
-        let active = app.snapshot.settings.active_config.as_ref() == Some(path);
-        Row::new(vec![
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-            if !app.preview && !path.is_file() {
-                "Missing".into()
-            } else if active {
-                "Selected".into()
+    let block = panel(format!(" {title} "));
+    let visible = block.inner(cols[0]).height.saturating_sub(1) as usize;
+    let selected = app.selected[app.tab.index()].min(rows.len().saturating_sub(1));
+    let start = viewport_start(selected, rows.len(), visible);
+    let widths: Vec<_> = (0..headers.len())
+        .map(|i| {
+            if i == 0 {
+                Constraint::Min(12)
             } else {
-                "Available".into()
-            },
-        ])
-    });
-    let table = Table::new(rows, [Constraint::Min(12), Constraint::Length(10)])
-        .block(block)
-        .header(Row::new(["File", "Selection"]).fg(Theme::ACCENT).bold())
-        .column_spacing(1)
-        .row_highlight_style(
-            Style::default()
-                .bg(Theme::BG_SELECTED)
-                .fg(Theme::TEXT_PRIMARY),
-        )
-        .highlight_symbol("› ");
-    let mut state = TableState::default().with_selected(Some(selected.saturating_sub(start)));
+                Constraint::Length(12)
+            }
+        })
+        .collect();
+    let table = Table::new(
+        rows.iter().skip(start).take(visible).cloned().map(Row::new),
+        widths,
+    )
+    .header(Row::new(headers).fg(Theme::ACCENT).bold())
+    .block(block)
+    .column_spacing(2)
+    .row_highlight_style(
+        Style::default()
+            .bg(Theme::BG_SELECTED)
+            .fg(Theme::TEXT_PRIMARY),
+    )
+    .highlight_symbol("› ");
+    let mut state = TableState::default()
+        .with_selected((!rows.is_empty()).then_some(selected.saturating_sub(start)));
     f.render_stateful_widget(table, cols[0], &mut state);
-    scrollbar(f, cols[0], entries.len(), height, start);
+    scrollbar(f, cols[0], rows.len(), visible, start);
     if cols.len() > 1 {
-        let running = app
-            .snapshot
-            .running_config
-            .as_ref()
-            .map_or_else(|| "Not managed here".into(), |p| p.display().to_string());
+        body(f, cols[1], "Details", details);
+    }
+}
+fn profiles(f: &mut Frame, app: &App, area: Rect) {
+    let w = &app.snapshot.workspace;
+    let entries = w.core_profiles();
+    if entries.is_empty() {
         body(
             f,
-            cols[1],
-            "Selection details",
+            area,
+            "Profiles",
             vec![
-                line("File", entries[selected].display().to_string()),
+                line("Core", &w.active_core),
                 Line::from(""),
-                line("Running config", running),
-                Line::from(""),
-                Line::from("Enter: select and validate"),
-                Line::from("F: browse for another file"),
-                Line::from("S / X: start / stop managed Mihomo"),
-                Line::from("YAML selection leaves the original file unchanged.")
+                Line::from("F: enter a YAML / JSON / WireGuard file path."),
+                Line::from("N: Windows file picker. G: generate from endpoint + routing."),
+                Line::from("Choose a core on tab 7. I installs it when needed."),
+                Line::from("Selection never starts a core or rewrites the original.")
                     .fg(Theme::TEXT_MUTED),
             ],
         );
+        return;
     }
+    let selected = app.selected[1].min(entries.len() - 1);
+    let p = entries[selected];
+    let running = app
+        .snapshot
+        .core_states
+        .get(&w.active_core)
+        .and_then(|s| s.running_config.as_ref())
+        .map_or_else(|| "Not managed here".into(), |p| p.display().to_string());
+    library(
+        f,
+        app,
+        area,
+        "Native profiles",
+        entries
+            .iter()
+            .map(|p| {
+                vec![
+                    p.name.clone(),
+                    if w.selected_profile().is_some_and(|s| s.id == p.id) {
+                        "Selected".into()
+                    } else if !app.preview && !p.path.is_file() {
+                        "Missing".into()
+                    } else {
+                        p.validation.clone()
+                    },
+                ]
+            })
+            .collect(),
+        vec!["Profile", "State"],
+        vec![
+            line("File", p.path.display().to_string()),
+            line("Native check", &p.validation),
+            line("Port", p.port.to_string()),
+            Line::from(""),
+            line("Running", running),
+            Line::from(""),
+            Line::from("Enter selects. V validates. C makes an editable copy."),
+            Line::from("G generates a new file. S/X starts/stops the owned core."),
+            Line::from("R renames. Delete removes the entry; file stays.").fg(Theme::TEXT_MUTED),
+        ],
+    );
+}
+fn cores(f: &mut Frame, app: &App, area: Rect) {
+    let selected = app.selected[6];
+    let details = app
+        .snapshot
+        .cores
+        .get(selected)
+        .map(|c| {
+            vec![
+                line("Author", &c.author),
+                line("License", &c.license),
+                line("Source", &c.source),
+                line("Format", &c.format),
+                line("Generated TUN", c.tun.to_string()),
+                line("Process rules", c.process_rules.to_string()),
+                Line::from(""),
+                Line::from("Enter selects. E edits options. I installs."),
+                Line::from("A imports an adapter. B installs a trusted local binary."),
+            ]
+        })
+        .unwrap_or_default();
+    library(
+        f,
+        app,
+        area,
+        "Core adapters",
+        app.snapshot
+            .cores
+            .iter()
+            .map(|c| {
+                vec![
+                    c.name.clone(),
+                    if c.id == app.snapshot.workspace.active_core {
+                        "Selected".into()
+                    } else {
+                        app.snapshot
+                            .core_states
+                            .get(&c.id)
+                            .map_or("Unavailable", |s| s.service.label())
+                            .into()
+                    },
+                ]
+            })
+            .collect(),
+        vec!["Core", "State"],
+        details,
+    );
+}
+fn endpoints(f: &mut Frame, app: &App, area: Rect) {
+    let w = &app.snapshot.workspace;
+    if w.endpoints.is_empty() {
+        body(
+            f,
+            area,
+            "Private endpoint library",
+            vec![
+                Line::from("A: paste SOCKS5 / HTTP(S) / VLESS / Trojan link."),
+                Line::from("W: import a single-peer WireGuard .conf."),
+                Line::from(""),
+                Line::from("Credentials are stored privately and hidden here."),
+                Line::from("Selecting an endpoint only affects future generated profiles."),
+            ],
+        );
+        return;
+    }
+    let details = w
+        .endpoints
+        .get(app.selected[7])
+        .map(|e| {
+            vec![
+                line("Name", &e.name),
+                line("Type", &e.kind),
+                line("Server", format!("{}:{}", e.server, e.port)),
+                Line::from(""),
+                Line::from("Credentials hidden; originals remain untouched."),
+                Line::from("Enter selects. Delete removes from library."),
+                Line::from("Profiles already generated keep their original endpoint."),
+            ]
+        })
+        .unwrap_or_default();
+    library(
+        f,
+        app,
+        area,
+        "Endpoints",
+        w.endpoints
+            .iter()
+            .map(|e| {
+                vec![
+                    e.name.clone(),
+                    if w.active_endpoint.as_ref() == Some(&e.id) {
+                        "Selected".into()
+                    } else {
+                        e.kind.clone()
+                    },
+                ]
+            })
+            .collect(),
+        vec!["Endpoint", "Type / state"],
+        details,
+    );
+}
+fn routing(f: &mut Frame, app: &App, area: Rect) {
+    let w = &app.snapshot.workspace;
+    let mut rows: Vec<_> = w
+        .standards
+        .iter()
+        .map(|s| {
+            vec![
+                s.name.clone(),
+                if s.id == w.active_standard {
+                    "Selected".into()
+                } else {
+                    s.fallback.clone()
+                },
+            ]
+        })
+        .collect();
+    let mut details = vec![
+        Line::from("A creates a standard. Enter selects it."),
+        Line::from("E adds domain / process / IP rules. U/J reorders."),
+        Line::from("Delete removes. T sets fallback. B edits browser split."),
+        Line::from("G generates. O opens the browser PAC."),
+    ];
+    if let Some(s) = w.standard() {
+        rows.extend(
+            s.rules
+                .iter()
+                .map(|r| vec![format!("{}: {}", r.kind, r.value), r.action.clone()]),
+        );
+        details.extend([
+            Line::from(""),
+            line("Fallback", &s.fallback),
+            line("Browser proxy domains", s.browser_domains.join(", ")),
+            Line::from(""),
+            Line::from("Rules run top to bottom after local network bypass."),
+            Line::from("Browser PAC selects domains before the core's rules."),
+            Line::from("Changes apply only to a newly generated profile."),
+        ]);
+    }
+    library(
+        f,
+        app,
+        area,
+        "Standards & ordered rules",
+        rows,
+        vec!["Standard / rule", "Route"],
+        details,
+    );
+}
+fn settings(f: &mut Frame, app: &App, area: Rect) {
+    let w = &app.snapshot.workspace;
+    let mut lines = vec![
+        line("Runtime data", app.paths.root.display().to_string()),
+        Line::from("H: enter data folder. K: folder picker. O: open folder."),
+        Line::from("B: backup. R: restore (cores stopped). A: toggle core autostart."),
+        Line::from(""),
+        line("Selected core", &w.active_core),
+    ];
+    if let Some(o) = w.core_options.get(&w.active_core) {
+        lines.extend([
+            line("DNS", o.dns.join(", ")),
+            line("Strategy", &o.dns_strategy),
+            line(
+                "Port / IPv6 / TUN",
+                format!("{} / {} / {}", o.port, o.ipv6, o.tun),
+            ),
+            line("Logging", &o.log_level),
+        ]);
+    }
+    lines.extend([
+        Line::from("E: edit options. G on Profiles generates a new config."),
+        Line::from(""),
+        Line::from("Authors: MetaCubeX / Dreamacro; nekohasekai / SagerNet; XTLS / ProjectX."),
+        Line::from("Flowseal; bolvan; WireGuard; basil00; Rust, Ratatui and Crossterm."),
+        Line::from("Licenses and project links: THIRD_PARTY_NOTICES.md.").fg(Theme::TEXT_MUTED),
+    ]);
+    body(f, area, "Storage, client DNS & credits", lines);
 }
 
 fn diagnostics(f: &mut Frame, app: &App, area: Rect) {
@@ -403,7 +719,7 @@ fn diagnostics(f: &mut Frame, app: &App, area: Rect) {
         .count();
     let pct = completed_percent(done, app.diag_targets.len());
     let mode = if app.diag_via_proxy {
-        "Mihomo inbound"
+        "Selected core inbound"
     } else {
         "System route"
     };
@@ -497,7 +813,7 @@ fn zapret(f: &mut Frame, app: &App, area: Rect) {
         text.extend([
             Line::from(""),
             Line::from("Choose, install and remove strategies in the upstream manager."),
-            Line::from("URT does not replace the selected strategy or delete services."),
+            Line::from("URTW does not replace the selected strategy or delete services."),
             Line::from("Zapret / WinDivert currently requires x64 Windows."),
             Line::from("Administrator access is needed for service management.")
                 .fg(Theme::TEXT_MUTED),
@@ -510,7 +826,7 @@ fn components(f: &mut Frame, app: &App, area: Rect) {
     let block = panel(" Verified upstream components ");
     let inner = block.inner(area);
     f.render_widget(block, area);
-    let sections = Layout::vertical([Constraint::Length(5), Constraint::Min(0)]).split(inner);
+    let sections = Layout::vertical([Constraint::Length(7), Constraint::Min(0)]).split(inner);
     let rows = Component::ALL.into_iter().map(|c| {
         let installed = app
             .snapshot
@@ -599,22 +915,20 @@ fn footer(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let keys = match app.tab {
-        Tab::Overview => "F Config · S Start Mihomo · X Stop · P Proxy · Q Quit",
-        Tab::Profiles => "↑↓ Select · Enter Apply selection · F File · S/X Start/Stop · Q Quit",
-        Tab::Diagnostics => "↑↓ Scroll · D Run tests · M Change path · Tab Tabs · Q Quit",
-        Tab::Telegram => "S/X Start/Stop · L Link · G Connect · E Port · O Config · I Install · Q",
+        Tab::Overview => "F/N Config · S/X Core · P Windows proxy · D Test · Q Quit",
+        Tab::Profiles => "↑↓ Enter Select · F/N File · G Generate · V Check · C Copy · S/X · Q",
+        Tab::Diagnostics => "↑↓ Scroll · D Test · M Change path · Tab Tabs · Q Quit",
+        Tab::Telegram => "S/X Run/Stop · L Link · G Connect · E Port · O Config · I Install · Q",
         Tab::Zapret => "Enter Service manager · I Install · Tab Tabs · Q Quit",
         Tab::Components => "↑↓ Select · I/Enter Install pinned · Tab Tabs · Q Quit",
+        Tab::Cores => "↑↓ Enter Select · E Options · I Install · A Adapter · S/X · Q",
+        Tab::Endpoints => "↑↓ Enter Select · A Link · W WireGuard · Delete Remove · Q",
+        Tab::Routing => "A Standard · E Rule · B Browser · T Default · U/J Move · G Generate · Q",
+        Tab::Settings => "E Core options · H/K Folder · O Open · B Backup · R Restore · Q",
     };
-    let compact = match app.tab {
-        Tab::Profiles => "↑↓ Select · Enter Choose · F File · S/X Run/Stop · Q",
-        Tab::Diagnostics => "↑↓ Scroll · D Test · M Path · Tab Tabs · Q Quit",
-        Tab::Telegram => "S/X Run/Stop · L Link · G TG · E Port · O Edit · I · Q",
-        _ => keys,
-    };
+
     f.render_widget(
-        Paragraph::new(fit(if area.width < 95 { compact } else { keys }, width))
-            .block(panel(" Actions ")),
+        Paragraph::new(fit(keys, width)).block(panel(" Actions ")),
         area,
     );
 }
@@ -664,6 +978,17 @@ mod tests {
                 app.snapshot.settings.profiles = (0..50)
                     .map(|i| format!("profiles/Профиль-{i}.yaml").into())
                     .collect();
+                app.snapshot.workspace.profiles = (0..50)
+                    .map(|i| crate::workspace::Profile {
+                        id: format!("profile-{i}"),
+                        name: format!("Профиль-{i}"),
+                        core: "mihomo".into(),
+                        path: format!("profiles/profile-{i}.yaml").into(),
+                        port: 17890,
+                        validation: "pending".into(),
+                        generated: false,
+                    })
+                    .collect();
                 app.selected[1] = 49;
                 for progress in [None, Some(0), Some(50), Some(100)] {
                     app.operation = Some(Operation {
@@ -673,10 +998,14 @@ mod tests {
                     });
                     let text = screen(&app, w, h);
                     if w >= 60 && h >= 18 {
-                        assert!(text.contains(&format!("URT v{}", env!("CARGO_PKG_VERSION"))));
+                        assert!(text.contains(&format!("URTW v{}", env!("CARGO_PKG_VERSION"))));
                     }
                 }
-                app.port_input = Some("1443".into());
+                app.form(
+                    "Telegram local port",
+                    serde_json::json!({"action":"SetTGPort"}),
+                    vec![App::field("port", "Port", "1443", false)],
+                );
                 let _ = screen(&app, w, h);
             }
         }
@@ -696,6 +1025,36 @@ mod tests {
         assert!(text.contains("100%"));
         assert!(text.contains("10/10 completed"));
         assert!(text.contains("0 HTTP OK"));
+    }
+    #[test]
+    fn forms_never_render_endpoint_credentials() {
+        let mut app = app();
+        app.form(
+            "Private endpoint",
+            serde_json::json!({"action":"AddEndpoint"}),
+            vec![App::field("link", "Link", "very-private-test-value", true)],
+        );
+        let text = screen(&app, 120, 30);
+        assert!(!text.contains("very-private-test-value"));
+        assert!(text.contains("•••"));
+    }
+    #[test]
+    fn last_profile_is_visible_in_compact_view() {
+        let mut app = app();
+        app.tab = Tab::Profiles;
+        app.snapshot.workspace.profiles = (0..50)
+            .map(|i| crate::workspace::Profile {
+                id: i.to_string(),
+                name: format!("Profile-{i}"),
+                core: "mihomo".into(),
+                path: "config.yaml".into(),
+                port: 17890,
+                validation: "pending".into(),
+                generated: false,
+            })
+            .collect();
+        app.selected[1] = 49;
+        assert!(screen(&app, 60, 18).contains("Profile-49"));
     }
     #[test]
     fn unicode_truncation_respects_cells() {

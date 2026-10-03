@@ -1,15 +1,15 @@
 [package]
-name = "urt"
-version = "1.0.0"
+name = "urtw"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Windows routing dashboard for Mihomo, Zapret and Telegram WS Proxy"
 license = "MIT"
-repository = "https://github.com/Oqune/URT"
+repository = "https://github.com/Oqune/URTW"
 publish = false
 
 [[bin]]
-name = "URT"
+name = "URTW"
 path = "src/main.rs"
 
 [dependencies]

@@ -9,7 +9,7 @@ local, so the existing private key is not exported into Actions secrets.
 3. Commit using Conventional Commits; create a signed tag:
 
 ```powershell
-git tag -s v1.0.0 -m "URT v1.0.0"
+git tag -s v1.0.0 -m "URTW v1.0.0"
 git push origin master
 git push origin v1.0.0
 ```

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version,[string]$Repository='Oqune/URT',[string]$Gpg='gpg',[string]$Python='python')
+param([string]$Version,[string]$Repository='Oqune/URTW',[string]$Gpg='gpg',[string]$Python='python')
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
 if(-not $Version){$Version=(Get-Content -LiteralPath (Join-Path $project 'VERSION') -Raw).Trim()}
@@ -24,16 +24,16 @@ $runs=& gh run list --repo $Repository --workflow build.yml --branch $tag --comm
 if(-not @($runs | Where-Object {$_.status -eq 'completed' -and $_.conclusion -eq 'success' -and $_.event -eq 'push'})){throw 'No successful completed release workflow for this commit.'}
 $release=& gh release view $tag --repo $Repository --json isDraft,tagName,assets | ConvertFrom-Json
 if($LASTEXITCODE -ne 0 -or -not $release.isDraft -or $release.tagName -ne $tag){throw 'Publication requires an existing draft for this exact tag.'}
-$tempBase=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());$stage=Join-Path $tempBase ('URT-release-'+[guid]::NewGuid().ToString('N'))
+$tempBase=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());$stage=Join-Path $tempBase ('URTW-release-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 try {
-    & gh release download $tag --repo $Repository --dir $stage --pattern "URT-$Version-windows-*.zip" --pattern SHA256SUMS
+    & gh release download $tag --repo $Repository --dir $stage --pattern "URTW-$Version-windows-*.zip" --pattern SHA256SUMS
     if($LASTEXITCODE -ne 0){throw 'Could not download draft release assets.'}
     $sums=Join-Path $stage 'SHA256SUMS';$seen=@()
     foreach($line in (Get-Content -LiteralPath $sums)) {
-        if($line -notmatch '^([a-f0-9]{64})\s+\*?(URT-[0-9.]+-windows-(?:amd64|arm64)\.zip)$'){throw 'Malformed release checksum manifest.'}
+        if($line -notmatch '^([a-f0-9]{64})\s+\*?(URTW-[0-9.]+-windows-(?:amd64|arm64)\.zip)$'){throw 'Malformed release checksum manifest.'}
         $hash=$matches[1];$name=$matches[2]
-        if($name -notin @("URT-$Version-windows-amd64.zip","URT-$Version-windows-arm64.zip") -or $seen -contains $name){throw 'Unexpected or duplicate release artifact.'}
+        if($name -notin @("URTW-$Version-windows-amd64.zip","URTW-$Version-windows-arm64.zip") -or $seen -contains $name){throw 'Unexpected or duplicate release artifact.'}
         $seen+=$name
         if((Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash){throw 'Release checksum mismatch.'}
     }
@@ -42,9 +42,13 @@ try {
     & $Python (Join-Path $PSScriptRoot 'scan-secrets.py') --zip @zips
     if($LASTEXITCODE -ne 0){throw 'Release assets failed the private-data scan.'}
     $signature=Join-Path $stage 'SHA256SUMS.asc'
-    & $Gpg --armor --local-user $fingerprint --output $signature --detach-sign $sums
-    if($LASTEXITCODE -ne 0){throw 'GPG signing failed.'}
-    $result=Invoke-Verification $Gpg @('--status-fd','1','--verify',$signature,$sums)
+    Push-Location $stage
+    try {
+        # Relative filenames work with native Windows GPG and Git's MSYS GPG.
+        & $Gpg --armor --local-user $fingerprint --output SHA256SUMS.asc --detach-sign SHA256SUMS
+        if($LASTEXITCODE -ne 0){throw 'GPG signing failed.'}
+        $result=Invoke-Verification $Gpg @('--status-fd','1','--verify','SHA256SUMS.asc','SHA256SUMS')
+    }finally{Pop-Location}
     if($result.Code -ne 0 -or ($result.Text -notmatch ('\[GNUPG:\] VALIDSIG '+[regex]::Escape($fingerprint)+'\b'))){throw 'New release signature failed verification.'}
     & gh release upload $tag $signature --repo $Repository --clobber
     if($LASTEXITCODE -ne 0){throw 'Signature upload failed; draft remains unpublished.'}
@@ -53,6 +57,6 @@ try {
     Write-Host "Published GPG-signed release: https://github.com/$Repository/releases/tag/$tag"
 }finally{
     $resolved=[IO.Path]::GetFullPath($stage)
-    if(-not $resolved.StartsWith($tempBase,[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notmatch '^URT-release-[a-f0-9]{32}$'){throw 'Unsafe release cleanup path.'}
+    if(-not $resolved.StartsWith($tempBase,[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notmatch '^URTW-release-[a-f0-9]{32}$'){throw 'Unsafe release cleanup path.'}
     if(Test-Path -LiteralPath $resolved){Remove-Item -LiteralPath $resolved -Recurse -Force}
 }

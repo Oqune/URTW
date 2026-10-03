@@ -1,4 +1,4 @@
-# URT engineering contract
+# URTW engineering contract
 
 - Read `PROJECT.md`, `docs/policies/policies.md` and the relevant specification.
 - Never change an existing deployed installation or private configuration as a

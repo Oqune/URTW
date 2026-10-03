@@ -1,9 +1,12 @@
 # Browser split routing / Раздельная маршрутизация браузера
 
-WireGuard import writes `%LOCALAPPDATA%\URT\browser-routing.pac` (or your chosen
-runtime). Only domains from `browser-vpn-domains.txt` use the Mihomo HTTP inbound;
-other hosts return DIRECT. The proxy port of generated profiles is 17890. A raw
-YAML using another port needs a corresponding user-maintained PAC.
+Generating a profile writes `browser-routing.pac` in the selected private data
+folder, with the generated profile's actual port. Routing → B edits the domains;
+G regenerates. Only those suffixes use the selected core's HTTP inbound; other
+hosts return DIRECT. Native profile selection does not regenerate a PAC; maintain
+its matching port or generate a separate profile/PAC deliberately.
+Matched domains have no automatic DIRECT fallback if the local proxy is down.
+Legacy v1.0.x import PACs may include a DIRECT fallback; regenerate to update it.
 
 ## Firefox
 
@@ -11,7 +14,7 @@ Open Settings, search for **proxy**, open the connection settings, and choose
 **Automatic proxy configuration URL**. Enter, for the default runtime:
 
 ```text
-file:///C:/Users/YOUR_USER/AppData/Local/URT/browser-routing.pac
+file:///C:/Users/YOUR_USER/AppData/Local/URTW/browser-routing.pac
 ```
 
 Replace `YOUR_USER` or use the path of your explicitly chosen runtime. Click
@@ -24,7 +27,7 @@ Close all instances of the browser. In a dedicated shortcut's **Properties →
 Target**, append a space and this argument after the quoted executable path:
 
 ```text
---proxy-pac-url="file:///D:/URT-data/browser-routing.pac"
+--proxy-pac-url="file:///D:/URTW-data/browser-routing.pac"
 ```
 
 Use your actual private runtime path. Launch from that shortcut, so an already
@@ -40,4 +43,4 @@ to apply only to that browser.
 для первого и системный путь для второго. При активном системном TUN запрос
 DIRECT всё ещё может обрабатываться его правилами. HTTP 200 подтверждает ответ
 сайта, но сам по себе не доказывает конкретный маршрут; для проверки маршрута
-используй логи своего Mihomo.
+используй логи выбранного ядра.

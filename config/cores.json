@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "cores": [
+    {"id":"mihomo","name":"Mihomo","author":"MetaCubeX contributors (Clash lineage: Dreamacro)","source":"https://github.com/MetaCubeX/mihomo","license":"GPL-3.0","executable":"mihomo.exe","format":"yaml","default_port":17890,"validate_args":["-t","-d","{data}","-f","{config}"],"start_args":["-d","{data}","-f","{config}"],"tun":true,"process_rules":true,"generator":"mihomo"},
+    {"id":"singbox","name":"sing-box","author":"nekohasekai and SagerNet contributors","source":"https://github.com/SagerNet/sing-box","license":"GPL-3.0 (see upstream terms)","executable":"sing-box.exe","format":"json","default_port":17891,"validate_args":["check","-D","{data}","-c","{config}"],"start_args":["run","-D","{data}","-c","{config}"],"tun":true,"process_rules":true,"generator":"singbox"},
+    {"id":"xray","name":"Xray","author":"XTLS / Project X contributors","source":"https://github.com/XTLS/Xray-core","license":"MPL-2.0","executable":"xray.exe","format":"json","default_port":17892,"validate_args":["run","-test","-config","{config}"],"start_args":["run","-config","{config}"],"tun":false,"process_rules":false,"generator":"xray"}
+  ]
+}

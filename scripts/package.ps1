@@ -10,20 +10,20 @@ if(-not $SkipBuild){
     $rustupHome=if($env:RUSTUP_HOME){$env:RUSTUP_HOME}else{Join-Path $env:USERPROFILE '.rustup'}
     $oldFlags=$env:RUSTFLAGS
     try {
-        $env:RUSTFLAGS="--remap-path-prefix=$project=/usr/src/urt --remap-path-prefix=$cargoHome=/usr/src/cargo --remap-path-prefix=$rustupHome=/usr/src/rust"
+        $env:RUSTFLAGS="--remap-path-prefix=$project=/usr/src/urtw --remap-path-prefix=$cargoHome=/usr/src/cargo --remap-path-prefix=$rustupHome=/usr/src/rust"
         Push-Location $project;try{cargo build --release --locked --target $Target;if($LASTEXITCODE -ne 0){throw 'Release build failed.'}}finally{Pop-Location}
     }finally{$env:RUSTFLAGS=$oldFlags}
 }
-$binary=Join-Path $project ('target\'+$Target+'\release\URT.exe')
+$binary=Join-Path $project ('target\'+$Target+'\release\URTW.exe')
 if(-not(Test-Path -LiteralPath $binary)){throw 'Built release binary missing.'}
 $dist=Join-Path $project 'dist';New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $stage=Join-Path $dist ('package-'+[guid]::NewGuid().ToString('N'))
-$package=Join-Path $stage ('URT-'+$Arch);New-Item -ItemType Directory -Path $package -Force | Out-Null
+$package=Join-Path $stage ('URTW-'+$Arch);New-Item -ItemType Directory -Path $package -Force | Out-Null
 try {
-    Copy-Item -LiteralPath $binary -Destination (Join-Path $package 'URT.exe')
-    foreach($file in @('routing.ps1','setup.ps1','URT.bat','install.bat','components.lock.json','README.md','README.ru.md','LICENSE','THIRD_PARTY_NOTICES.md','SECURITY.md','CHANGELOG.md','VERSION','SIGNING_KEY_FINGERPRINT')){Copy-Item -LiteralPath (Join-Path $project $file) -Destination $package}
-    foreach($dir in @('config','docs')){Copy-Item -LiteralPath (Join-Path $project $dir) -Destination $package -Recurse}
-    $zip=Join-Path $dist ("URT-$version-windows-$Arch.zip")
+    Copy-Item -LiteralPath $binary -Destination (Join-Path $package 'URTW.exe')
+    foreach($file in @('routing.ps1','setup.ps1','URTW.bat','install.bat','portable.flag','components.lock.json','README.md','README.ru.md','LICENSE','THIRD_PARTY_NOTICES.md','SECURITY.md','CHANGELOG.md','VERSION','SIGNING_KEY_FINGERPRINT')){Copy-Item -LiteralPath (Join-Path $project $file) -Destination $package}
+    foreach($dir in @('config','docs','modules')){Copy-Item -LiteralPath (Join-Path $project $dir) -Destination $package -Recurse}
+    $zip=Join-Path $dist ("URTW-$version-windows-$Arch.zip")
     if(Test-Path -LiteralPath $zip){Remove-Item -LiteralPath $zip}
     Compress-Archive -LiteralPath $package -DestinationPath $zip -CompressionLevel Optimal
     & $Python (Join-Path $PSScriptRoot 'scan-secrets.py') --zip $zip

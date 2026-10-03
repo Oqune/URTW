@@ -2,13 +2,13 @@
 
 ## Scope
 
-Extract URT development from the existing Windows installation. Keep the active
+Extract URTW development from the existing Windows installation. Keep the active
 installation and every private configuration unchanged. Publish source and
 portable x64/ARM64 releases with signed tags and detached GPG checksum signatures.
 
 ## Runtime contract v1
 
-- Assets live beside `URT.exe`; mutable data defaults to `%LOCALAPPDATA%\URT`.
+- Assets live beside `URTW.exe`; mutable data defaults to `%LOCALAPPDATA%\URTW`.
 - `--root` explicitly selects a different runtime. No machine-specific fallback.
 - Startup reads status only. Installing, selecting, starting and stopping are
   distinct operations. Selecting a profile never restarts a service.
@@ -16,6 +16,8 @@ portable x64/ARM64 releases with signed tags and detached GPG checksum signature
 - Record the running Mihomo port separately from the next selected profile.
   Diagnostics use the running port; Windows Proxy activation rejects a selection
   that differs from the running core. Re-select changed mixed-port values before start.
+- Normalize Windows paths before ownership comparison. Isolated integration
+  must confirm that the built Rust dashboard recognizes the core as managed.
 - Native file picker supports Mihomo YAML and single-peer WireGuard profiles.
 - Profiles and Telegram secrets are private runtime data, never release assets.
 - Zapret management opens upstream `service.bat`. No preset picker or automatic

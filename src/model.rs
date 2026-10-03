@@ -9,16 +9,24 @@ pub enum Tab {
     Telegram,
     Zapret,
     Components,
+    Cores,
+    Endpoints,
+    Routing,
+    Settings,
 }
 
 impl Tab {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Overview,
         Self::Profiles,
         Self::Diagnostics,
         Self::Telegram,
         Self::Zapret,
         Self::Components,
+        Self::Cores,
+        Self::Endpoints,
+        Self::Routing,
+        Self::Settings,
     ];
     pub fn index(self) -> usize {
         Self::ALL.iter().position(|t| *t == self).unwrap_or(0)
@@ -31,6 +39,10 @@ impl Tab {
             Self::Telegram => "Telegram",
             Self::Zapret => "Zapret",
             Self::Components => "Components",
+            Self::Cores => "Cores",
+            Self::Endpoints => "Endpoints",
+            Self::Routing => "Routing",
+            Self::Settings => "Settings",
         }
     }
 }
@@ -38,14 +50,24 @@ impl Tab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Component {
     Mihomo,
+    Singbox,
+    Xray,
     Telegram,
     Zapret,
 }
 impl Component {
-    pub const ALL: [Self; 3] = [Self::Mihomo, Self::Telegram, Self::Zapret];
+    pub const ALL: [Self; 5] = [
+        Self::Mihomo,
+        Self::Singbox,
+        Self::Xray,
+        Self::Telegram,
+        Self::Zapret,
+    ];
     pub fn id(self) -> &'static str {
         match self {
             Self::Mihomo => "mihomo",
+            Self::Singbox => "singbox",
+            Self::Xray => "xray",
             Self::Telegram => "telegram",
             Self::Zapret => "zapret",
         }
@@ -53,6 +75,8 @@ impl Component {
     pub fn title(self) -> &'static str {
         match self {
             Self::Mihomo => "Mihomo",
+            Self::Singbox => "sing-box",
+            Self::Xray => "Xray",
             Self::Telegram => "TG WS Proxy",
             Self::Zapret => "Zapret",
         }
@@ -118,6 +142,9 @@ pub struct Snapshot {
     pub installed_versions: std::collections::BTreeMap<String, String>,
     pub running_config: Option<PathBuf>,
     pub running_mihomo_port: Option<u16>,
+    pub workspace: crate::workspace::Workspace,
+    pub cores: Vec<crate::workspace::CoreInfo>,
+    pub core_states: std::collections::BTreeMap<String, crate::workspace::CoreState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,10 +193,11 @@ pub struct Operation {
 
 #[derive(Debug, Clone)]
 pub enum Action {
-    SelectConfig(PathBuf),
+    Workspace {
+        request: serde_json::Value,
+        label: &'static str,
+    },
     Install(Component),
-    StartMihomo,
-    StopMihomo,
     StartTelegram,
     StopTelegram,
     OpenZapret,
@@ -177,16 +205,13 @@ pub enum Action {
     OpenTelegram,
     EditTelegram,
     SetTelegramPort(u16),
-    EnableProxy,
     DisableProxy,
 }
 impl Action {
     pub fn command(&self) -> &'static str {
         match self {
-            Self::SelectConfig(_) => "SelectConfig",
+            Self::Workspace { .. } => "Request",
             Self::Install(_) => "Install",
-            Self::StartMihomo => "StartMihomo",
-            Self::StopMihomo => "StopMihomo",
             Self::StartTelegram => "StartTG",
             Self::StopTelegram => "StopTG",
             Self::OpenZapret => "OpenZapret",
@@ -194,16 +219,13 @@ impl Action {
             Self::OpenTelegram => "OpenTelegram",
             Self::EditTelegram => "EditTG",
             Self::SetTelegramPort(_) => "SetTGPort",
-            Self::EnableProxy => "EnableProxy",
             Self::DisableProxy => "DisableProxy",
         }
     }
     pub fn label(&self) -> &'static str {
         match self {
-            Self::SelectConfig(_) => "Selecting configuration",
+            Self::Workspace { label, .. } => label,
             Self::Install(_) => "Installing component",
-            Self::StartMihomo => "Starting Mihomo",
-            Self::StopMihomo => "Stopping Mihomo",
             Self::StartTelegram => "Starting TG WS Proxy",
             Self::StopTelegram => "Stopping TG WS Proxy",
             Self::OpenZapret => "Opening Zapret service manager",
@@ -211,7 +233,6 @@ impl Action {
             Self::OpenTelegram => "Opening Telegram",
             Self::EditTelegram => "Opening Telegram configuration",
             Self::SetTelegramPort(_) => "Saving Telegram port",
-            Self::EnableProxy => "Enabling Windows proxy",
             Self::DisableProxy => "Restoring Windows proxy",
         }
     }

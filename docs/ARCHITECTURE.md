@@ -2,65 +2,58 @@
 
 ```mermaid
 flowchart LR
-  UI[Rust terminal UI] --> Events[Async operation events]
-  UI --> Read[Read-only process / port / registry inspection]
-  Events --> Backend[Scoped PowerShell backend]
-  Backend --> Data[Private runtime data]
-  Backend --> Mihomo[Mihomo core]
-  Backend --> TG[Official Telegram tray app]
-  Backend --> Zapret[Original service.bat console]
-  Backend --> Downloads[Pinned HTTPS download + SHA-256]
-  Browser[Browser PAC] --> Mihomo
-  Apps[Apps with system TUN enabled] --> Mihomo
-  Mihomo --> WG[User WireGuard peer]
-  Mihomo --> Direct[DIRECT]
+  UI[Rust terminal UI] --> Read[Read-only process / registry / workspace inspection]
+  UI --> Events[Async events and requests over stdin]
+  Events --> PS[Scoped PowerShell backend]
+  PS --> WS[Private workspace: profiles, endpoints, ordered standards, DNS options]
+  PS --> Catalog[Attributed core adapters]
+  Catalog --> Cores[Mihomo / sing-box / Xray / custom native core]
+  PS --> TG[Original Telegram tray application]
+  PS --> Zapret[Original service.bat]
+  Browser[Browser PAC split] --> Cores
+  Cores --> Proxy[Selected endpoint]
+  Cores --> Direct[DIRECT]
 ```
 
-## Runtime contract v1
+Assets are independent of runtime data. Storage precedence and keys are documented
+in README. Discovery and snapshots do not create directories. Explicit folder
+selection remembers a path; it does not migrate files or stop processes.
+Schema-1 settings.json remains compatible; schema-1 workspace.json adds per-core
+profiles, endpoint credentials, standards and DNS. Built-in catalog is public;
+custom adapters and installed-path aliases are private. Legacy profiles get stable
+legacy-N IDs in both read-only UI migration and the backend's explicit save.
 
-The executable locates assets beside itself (or an explicit `--assets`). Mutable
-state uses `--root`, then `URT_HOME`, then `%LOCALAPPDATA%\URT`. There is no legacy
-installation fallback. Settings have `schema_version: 1`, selected YAML, saved
-profile paths, Mihomo port and Telegram port. Private settings are atomically
-replaced and protected with Windows ACLs. Profiles never enter the source tree
-as a development migration step.
+Status uses exact executable, PID and Unix creation time. Windows backend reads
+Win32_Process metadata to avoid Process.Path startup races. Ownership is rechecked
+before stop. State shows running config/port separately from future selection.
+External listeners are observations, not owned resources or VPN success claims.
 
-Status polling reads processes, PID records, loopback listeners and the current
-user's Windows proxy. A listener alone does not prove service ownership or
-internet reachability. Process records include PID, executable path and creation
-time; mutation requires all three to match. Quitting the dashboard does not stop
-managed components. Tests use independent random local ports with TUN disabled.
+Structured requests travel over stdin. Progress uses the compatible
+URT_PROGRESS|percent|description protocol, written directly to console rather
+than the PowerShell return pipeline. Unknown progress has a spinner; diagnostics
+count every completed response/failure, with HTTP success separate. Native error
+output is private; the UI gets a generic credential-free validation error.
 
-## Asynchronous operations and rendering
+Ten views use a navigation rail from 110 columns, two rows otherwise. Rounded
+panels have one horizontal cell padding. Viewport calculations keep selections
+visible, Unicode is truncated by cell width, forms mask credentials. Refresh events
+carry the runtime root so old snapshots cannot replace a newly selected workspace.
 
-Backend milestones use `URT_PROGRESS|percent|description`; success is reported
-only after the process exits successfully. Unknown progress uses an indeterminate
-indicator. Diagnostic completion counts both HTTP replies and transport failures,
-while HTTP success is a separate count. HTTP elapsed time is not ICMP RTT.
+Generators make new private files; native profiles remain intact. Capabilities
+reject unsupported generation. Rule order is local DIRECT, browser domains,
+manual ordered rules, fallback. Native profiles retain vendor semantics and may
+include their own providers and outbound groups. Core working data resolves under
+core-data/ID; installed-data aliases preserve existing provider/cache homes.
+Do not assume a native file's relative dependencies follow the profile's folder.
 
-Ratatui layouts reserve fixed navigation/footer heights and adapt the body.
-Padding is one cell horizontally inside rounded panels. Tables compute a visible
-slice around the selected row, with scrollbars positioned by viewport offset.
-Unicode labels are truncated by display width, without leaking heap allocations.
-Small windows show an explicit resize hint.
+Client DNS controls do not modify Windows DNS. TUN can change system routes only
+on explicit start of a TUN profile. Windows Proxy is a separate explicit action,
+with exact registry ownership before restoration. Broad process kills, adapter
+metrics, IDE synchronization and shell variable changes are absent from the new
+backend. A deployed legacy installation keeps those original scripts separately.
 
-## Routing and dependency boundaries
-
-The importer accepts a constrained single-peer WireGuard format and produces
-private Mihomo YAML. Arbitrary YAML remains under its owner's control. Provider
-paths resolve against the runtime `mihomo-data` home; absolute external paths
-work. No IDE, adapter-metric, firewall or global shell-environment synchronization
-is performed. Running Mihomo records include the original listening port;
-selecting another profile does not redirect diagnostics to its future port.
-Enabling Windows Proxy requires the selection to match the running core,
-snapshots the original values and restores them only while all applied proxy
-values still match the recorded ownership state.
-
-Browser PAC rules are independent from optional process rules. The generated
-Mihomo domain union includes browser VPN suffixes, so selected PAC requests can
-reach WG. The browser's remaining sites use its system path. An arbitrary system
-TUN or external application can influence that path; URT does not assert otherwise.
-
-Zapret strategy selection is delegated to its upstream service manager. Telegram
-uses upstream portable configuration, random secrets and upstream single-instance
-behavior. These third-party tools keep their own licenses and update lifecycle.
+Downloads are pinned HTTPS/SHA-256, extracted with traversal checks, staged then
+committed while the component is stopped. Configs, backups, endpoint secrets and
+logs use protected ACLs. Backups restore new profile copies; external original
+files and binaries remain. CI/local test roots use random loopback ports, TUN off,
+real core validators and local HTTP requests, with Windows Proxy unchanged.

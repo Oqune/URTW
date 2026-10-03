@@ -16,6 +16,26 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
+  signature-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Verify an existing signed tag with the public key
+        shell: bash
+        run: |
+          set -euo pipefail
+          fingerprint=$(tr -d '\r\n' < SIGNING_KEY_FINGERPRINT)
+          export GNUPGHOME="$RUNNER_TEMP/urtw-preflight"
+          mkdir -m 700 "$GNUPGHOME"
+          curl --fail --silent --show-error --location https://github.com/Oqune.gpg -o "$RUNNER_TEMP/key.asc"
+          gpg --batch --import "$RUNNER_TEMP/key.asc" >/dev/null 2>&1
+          if ! git -c gpg.program=gpg -c gpg.format=openpgp -c gpg.minTrustLevel=undefined verify-tag --raw v1.0.0 2> "$RUNNER_TEMP/status"; then
+            sed -E 's/<[^>]*>/<redacted>/g' "$RUNNER_TEMP/status"
+            exit 1
+          fi
+          grep -F "[GNUPG:] VALIDSIG $fingerprint " "$RUNNER_TEMP/status"
   checks:
     runs-on: windows-latest
     steps:
@@ -27,9 +47,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked -- -D warnings
       - run: cargo test --locked
+      - run: cargo build --locked
       - name: Isolated PowerShell integration
         shell: powershell
-        run: ./scripts/test-engine.ps1 -Integration
+        run: ./scripts/test-engine.ps1 -Integration -Dashboard ./target/debug/URTW.exe
       - name: Release metadata and credential scan
         shell: powershell
         run: |
@@ -40,7 +61,7 @@ jobs:
           }
 
   build:
-    needs: checks
+    needs: [checks, signature-preflight]
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -61,7 +82,7 @@ jobs:
         run: ./scripts/package.ps1 -Arch '${{ matrix.arch }}' -Target '${{ matrix.target }}'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: URT-windows-${{ matrix.arch }}
+          name: URTW-windows-${{ matrix.arch }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
@@ -78,7 +99,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: URT-windows-*
+          pattern: URTW-windows-*
           path: artifacts
           merge-multiple: true
       - name: Verify tag and create immutable publication draft
@@ -92,22 +113,25 @@ jobs:
           version=$(tr -d '\r\n' < VERSION)
           test "$RELEASE_TAG" = "v$version"
           fingerprint=$(tr -d '\r\n' < SIGNING_KEY_FINGERPRINT)
-          export GNUPGHOME="$RUNNER_TEMP/urt-gnupg"
+          export GNUPGHOME="$RUNNER_TEMP/urtw-gnupg"
           mkdir -m 700 "$GNUPGHOME"
-          curl --fail --silent --show-error --location https://github.com/Oqune.gpg -o "$RUNNER_TEMP/urt-public.asc"
-          gpg --batch --import "$RUNNER_TEMP/urt-public.asc"
+          curl --fail --silent --show-error --location https://github.com/Oqune.gpg -o "$RUNNER_TEMP/urtw-public.asc"
+          gpg --batch --import "$RUNNER_TEMP/urtw-public.asc" >/dev/null 2>&1
           gpg --batch --list-keys --with-colons "$fingerprint" | grep -F "fpr:::::::::$fingerprint:"
-          git verify-tag --raw "$RELEASE_TAG" 2> "$RUNNER_TEMP/urt-tag-status"
-          grep -F "[GNUPG:] VALIDSIG $fingerprint " "$RUNNER_TEMP/urt-tag-status"
+          if ! git -c gpg.program=gpg -c gpg.format=openpgp -c gpg.minTrustLevel=undefined verify-tag --raw "$RELEASE_TAG" 2> "$RUNNER_TEMP/urtw-tag-status"; then
+            sed -E 's/<[^>]*>/<redacted>/g' "$RUNNER_TEMP/urtw-tag-status"
+            exit 1
+          fi
+          grep -F "[GNUPG:] VALIDSIG $fingerprint " "$RUNNER_TEMP/urtw-tag-status"
           cd artifacts
-          test -f "URT-$version-windows-amd64.zip"
-          test -f "URT-$version-windows-arm64.zip"
-          sha256sum "URT-$version-windows-amd64.zip" "URT-$version-windows-arm64.zip" > SHA256SUMS
-          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/urt-release.json" 2>/dev/null; then
-            test "$(jq -r .isDraft "$RUNNER_TEMP/urt-release.json")" = true
+          test -f "URTW-$version-windows-amd64.zip"
+          test -f "URTW-$version-windows-arm64.zip"
+          sha256sum "URTW-$version-windows-amd64.zip" "URTW-$version-windows-arm64.zip" > SHA256SUMS
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/urtw-release.json" 2>/dev/null; then
+            test "$(jq -r .isDraft "$RUNNER_TEMP/urtw-release.json")" = true
             gh release upload "$RELEASE_TAG" ./*.zip SHA256SUMS --clobber
-            gh release edit "$RELEASE_TAG" --title "URT $RELEASE_TAG" --notes-file "../docs/releases/$RELEASE_TAG.md"
+            gh release edit "$RELEASE_TAG" --title "URTW $RELEASE_TAG" --notes-file "../docs/releases/$RELEASE_TAG.md"
           else
-            gh release create "$RELEASE_TAG" ./*.zip SHA256SUMS --verify-tag --draft --title "URT $RELEASE_TAG" --notes-file "../docs/releases/$RELEASE_TAG.md"
+            gh release create "$RELEASE_TAG" ./*.zip SHA256SUMS --verify-tag --draft --title "URTW $RELEASE_TAG" --notes-file "../docs/releases/$RELEASE_TAG.md"
           fi
           echo 'Draft is ready. Local GPG checksum signing is required before publication.'

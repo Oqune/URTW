@@ -1,0 +1,19 @@
+{
+  "schema_version":1,
+  "active_core":"mihomo",
+  "active_endpoint":null,
+  "active_standard":"selective",
+  "selected_profiles":{},
+  "profiles":[],
+  "endpoints":[],
+  "standards":[
+    {"id":"selective","name":"Selective / browser split","default":"direct","browser_domains":["chatgpt.com","openai.com","claude.ai","discord.com"],"rules":[{"kind":"domain","value":"chatgpt.com","action":"proxy"},{"kind":"domain","value":"openai.com","action":"proxy"},{"kind":"domain","value":"claude.ai","action":"proxy"},{"kind":"domain","value":"discord.com","action":"proxy"}]},
+    {"id":"direct","name":"Direct / isolated validation","default":"direct","browser_domains":[],"rules":[]},
+    {"id":"proxy","name":"Proxy default / explicit choice","default":"proxy","browser_domains":[],"rules":[]}
+  ],
+  "core_options":{
+    "mihomo":{"port":17890,"dns":["https://cloudflare-dns.com/dns-query"],"dns_strategy":"prefer_ipv4","ipv6":false,"tun":false,"log_level":"warning"},
+    "singbox":{"port":17891,"dns":["https://cloudflare-dns.com/dns-query"],"dns_strategy":"prefer_ipv4","ipv6":false,"tun":false,"log_level":"warn"},
+    "xray":{"port":17892,"dns":["https://cloudflare-dns.com/dns-query"],"dns_strategy":"prefer_ipv4","ipv6":false,"tun":false,"log_level":"warning"}
+  }
+}

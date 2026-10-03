@@ -1,4 +1,8 @@
-use crate::{app::AppEvent, model::*};
+use crate::{
+    app::AppEvent,
+    model::*,
+    workspace::{CoreInfo, CoreState, Workspace},
+};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::{
@@ -10,7 +14,7 @@ use std::{
 };
 use sysinfo::{Pid, System};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::mpsc,
 };
 
@@ -21,10 +25,6 @@ pub struct Paths {
 }
 impl Paths {
     pub fn discover(root: Option<PathBuf>, assets: Option<PathBuf>) -> Result<Self> {
-        let root = root
-            .or_else(|| std::env::var_os("URT_HOME").map(PathBuf::from))
-            .or_else(|| std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("URT")))
-            .context("Set --root or URT_HOME when LOCALAPPDATA is unavailable")?;
         let assets = if let Some(p) = assets {
             p
         } else {
@@ -36,20 +36,51 @@ impl Paths {
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| exe.parent().unwrap().to_path_buf())
         };
+        let remembered = fs::read(assets.join("urt-location.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v["root"].as_str().map(PathBuf::from));
+        let root = root
+            .or_else(|| std::env::var_os("URTW_HOME").map(PathBuf::from))
+            .or_else(|| std::env::var_os("URT_HOME").map(PathBuf::from))
+            .or(remembered)
+            .or_else(|| {
+                assets
+                    .join("portable.flag")
+                    .is_file()
+                    .then(|| assets.join("data"))
+            })
+            .or_else(|| std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("URTW")))
+            .context("Set --root or URTW_HOME")?;
         if !root.is_absolute() || !assets.is_absolute() {
-            bail!("Runtime and assets paths must be absolute");
+            bail!("Runtime and assets paths must be absolute")
         }
-        Ok(Self { root, assets })
+        Ok(Self {
+            root: std::path::absolute(root)?,
+            assets: std::path::absolute(assets)?,
+        })
     }
     pub fn pinned_version(&self, component: Component) -> String {
         fs::read(self.assets.join("components.lock.json"))
             .ok()
-            .and_then(|v| serde_json::from_slice::<serde_json::Value>(&v).ok())
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
             .and_then(|v| v[component.id()]["version"].as_str().map(str::to_owned))
             .unwrap_or_else(|| "Unavailable".into())
     }
+    pub fn remember(&self) -> Result<()> {
+        let file = self.assets.join("urt-location.json");
+        let tmp = file.with_extension("json.tmp");
+        fs::write(
+            &tmp,
+            serde_json::to_vec(&serde_json::json!({"root":self.root}))?,
+        )?;
+        if file.exists() {
+            fs::remove_file(&file)?;
+        }
+        fs::rename(tmp, file)?;
+        Ok(())
+    }
 }
-
 #[derive(Deserialize)]
 struct ProcessRecord {
     pid: u32,
@@ -60,10 +91,14 @@ struct ProcessRecord {
     #[serde(default)]
     port: u16,
 }
-
 fn same_path(a: &Path, b: &Path) -> bool {
-    a.to_string_lossy()
-        .eq_ignore_ascii_case(&b.to_string_lossy())
+    let a = std::path::absolute(a).unwrap_or_else(|_| a.into());
+    let b = std::path::absolute(b).unwrap_or_else(|_| b.into());
+    a.components()
+        .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())
+        .eq(b
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase()))
 }
 fn port_open(port: u16) -> bool {
     TcpStream::connect_timeout(
@@ -72,46 +107,117 @@ fn port_open(port: u16) -> bool {
     )
     .is_ok()
 }
-
 pub fn inspect(paths: &Paths) -> Snapshot {
-    let mut snapshot = Snapshot::default();
-    let settings_path = paths.root.join("settings.json");
-    if settings_path.exists() {
-        match fs::read(settings_path)
-            .map_err(|_| "Cannot read runtime settings")
-            .and_then(|b| {
-                serde_json::from_slice::<Settings>(&b)
-                    .map_err(|_| "Invalid settings.json; restore a valid runtime settings file")
-            }) {
-            Ok(s) if s.schema_version == 1 => snapshot.settings = s,
-            Ok(_) => snapshot.error = Some("Unsupported settings schema".into()),
-            Err(e) => snapshot.error = Some(e.into()),
+    let mut s = Snapshot::default();
+    if let Ok(bytes) = fs::read(paths.root.join("settings.json")) {
+        match serde_json::from_slice::<Settings>(&bytes) {
+            Ok(v) if v.schema_version == 1 => s.settings = v,
+            _ => s.error = Some("Invalid settings.json; restore a private backup".into()),
         }
     }
-    snapshot.installed_versions = fs::read(paths.root.join("installed.json"))
+    s.installed_versions = fs::read(paths.root.join("installed.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let workspace_file = paths.root.join("workspace.json");
+    match fs::read(&workspace_file) {
+        Ok(b) => match serde_json::from_slice::<Workspace>(&b) {
+            Ok(w) if w.schema_version == 1 => s.workspace = w,
+            _ => s.error = Some("Invalid workspace.json; restore a private backup".into()),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            s.workspace = fs::read(paths.assets.join("config/workspace-defaults.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default()
+        }
+        Err(_) => s.error = Some("Cannot read workspace".into()),
+    }
+    s.cores = fs::read(paths.assets.join("config/cores.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| serde_json::from_value(v["cores"].clone()).ok())
+        .unwrap_or_default();
+    if let Ok(entries) = fs::read_dir(paths.root.join("core-adapters")) {
+        for entry in entries.flatten() {
+            if entry.path().extension().is_some_and(|e| e == "json")
+                && let Ok(b) = fs::read(entry.path())
+                && let Ok(core) = serde_json::from_slice::<CoreInfo>(&b)
+                && !s.cores.iter().any(|c| c.id == core.id)
+            {
+                s.cores.push(core);
+            }
+        }
+    }
+    // Read-only legacy migration view. The backend persists migration on an explicit action.
+    if !workspace_file.exists() {
+        for (i, path) in s.settings.profiles.iter().enumerate() {
+            let id = format!("legacy-{i}");
+            s.workspace.profiles.push(crate::workspace::Profile {
+                id: id.clone(),
+                name: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into(),
+                core: "mihomo".into(),
+                path: path.clone(),
+                port: s.settings.mihomo_port,
+                validation: "pending".into(),
+                generated: false,
+            });
+            if s.settings.active_config.as_ref() == Some(path) {
+                s.workspace.selected_profiles.insert("mihomo".into(), id);
+            }
+        }
+    }
+    let aliases: serde_json::Value = fs::read(paths.root.join("installed-paths.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let sys = System::new_all();
-    for (component, port) in [
-        (Component::Mihomo, snapshot.settings.mihomo_port),
-        (Component::Telegram, snapshot.settings.tg_port),
-        (Component::Zapret, 0),
-    ] {
-        let record: Option<ProcessRecord> =
-            fs::read(paths.root.join(format!("{}.pid.json", component.id())))
-                .ok()
-                .and_then(|b| serde_json::from_slice(&b).ok());
+    let mut items: Vec<(String, PathBuf, u16)> = s
+        .cores
+        .iter()
+        .map(|c| {
+            (
+                c.id.clone(),
+                paths.root.join("tools").join(&c.id).join(&c.executable),
+                s.workspace
+                    .core_options
+                    .get(&c.id)
+                    .map_or(c.default_port, |o| o.port),
+            )
+        })
+        .collect();
+    items.extend([
+        (
+            "telegram".into(),
+            paths.root.join("tools/telegram/TgWsProxy_windows.exe"),
+            s.settings.tg_port,
+        ),
+        (
+            "zapret".into(),
+            paths.root.join("tools/zapret/bin/winws.exe"),
+            0,
+        ),
+    ]);
+    for (id, default_exe, port) in items {
+        let expected = aliases[&id]
+            .as_str()
+            .map(PathBuf::from)
+            .filter(|p| {
+                std::path::absolute(p)
+                    .ok()
+                    .is_some_and(|p| p.starts_with(&paths.root))
+            })
+            .unwrap_or(default_exe);
+        let record: Option<ProcessRecord> = fs::read(paths.root.join(format!("{id}.pid.json")))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
         let owned = record
             .as_ref()
-            .filter(|r| {
-                let expected = match component {
-                    Component::Mihomo => paths.root.join("tools/mihomo/mihomo.exe"),
-                    Component::Telegram => paths.root.join("tools/telegram/TgWsProxy_windows.exe"),
-                    Component::Zapret => paths.root.join("tools/zapret/bin/winws.exe"),
-                };
-                same_path(&r.path, &expected)
-            })
+            .filter(|r| same_path(&r.path, &expected))
             .and_then(|r| sys.process(Pid::from_u32(r.pid)))
             .filter(|p| {
                 record.as_ref().is_some_and(|r| {
@@ -119,33 +225,27 @@ pub fn inspect(paths: &Paths) -> Snapshot {
                 })
             });
         let external = sys.processes().values().find(|p| {
-            let name = p.name().to_string_lossy().to_lowercase();
-            match component {
-                Component::Mihomo => name.contains("mihomo"),
-                Component::Telegram => name.contains("tgwsproxy"),
-                Component::Zapret => name == "winws.exe" || name == "winws",
+            let n = p.name().to_string_lossy().to_lowercase();
+            match id.as_str() {
+                "mihomo" => n.contains("mihomo"),
+                "telegram" => n.contains("tgwsproxy"),
+                "zapret" => n == "winws.exe" || n == "winws",
+                _ => expected
+                    .file_name()
+                    .is_some_and(|v| n == v.to_string_lossy().to_lowercase()),
             }
         });
         let process = owned.or(external);
-        let installed = match component {
-            Component::Mihomo => paths.root.join("tools/mihomo/mihomo.exe").is_file(),
-            Component::Telegram => paths
-                .root
-                .join("tools/telegram/TgWsProxy_windows.exe")
-                .is_file(),
-            Component::Zapret => paths.root.join("tools/zapret/service.bat").is_file(),
-        };
-        let listen_port = if component == Component::Mihomo && owned.is_some() {
-            record
-                .as_ref()
-                .map(|r| r.port)
-                .filter(|p| *p > 0)
-                .unwrap_or(port)
-        } else {
-            port
-        };
+        let listen_port = owned
+            .and_then(|_| record.as_ref().map(|r| r.port))
+            .filter(|p| *p > 0)
+            .unwrap_or(port);
         let state = Service {
-            installed,
+            installed: if id == "zapret" {
+                paths.root.join("tools/zapret/service.bat").is_file()
+            } else {
+                expected.is_file()
+            },
             running: process.is_some(),
             managed: owned.is_some(),
             listening: if port == 0 {
@@ -157,17 +257,25 @@ pub fn inspect(paths: &Paths) -> Snapshot {
             memory_mb: process.map_or(0, |p| p.memory() / (1024 * 1024)),
             uptime_secs: process.map_or(0, |p| p.run_time()),
         };
-        match component {
-            Component::Mihomo => {
-                snapshot.mihomo = state;
-                if owned.is_some() {
-                    snapshot.running_mihomo_port = Some(listen_port);
-                    snapshot.running_config = record.and_then(|r| r.config);
-                }
+        let config = owned.and_then(|_| record.as_ref().and_then(|r| r.config.clone()));
+        match id.as_str() {
+            "mihomo" => {
+                s.mihomo = state.clone();
+                s.running_config = config.clone();
+                s.running_mihomo_port = owned.map(|_| listen_port)
             }
-            Component::Telegram => snapshot.telegram = state,
-            Component::Zapret => snapshot.zapret = state,
+            "telegram" => s.telegram = state.clone(),
+            "zapret" => s.zapret = state.clone(),
+            _ => {}
         }
+        s.core_states.insert(
+            id,
+            CoreState {
+                service: state,
+                running_config: config,
+                running_port: owned.map(|_| listen_port),
+            },
+        );
     }
     #[cfg(windows)]
     {
@@ -175,15 +283,14 @@ pub fn inspect(paths: &Paths) -> Snapshot {
         if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
         {
-            snapshot.proxy_enabled = key.get_value::<u32, _>("ProxyEnable").unwrap_or(0) == 1;
-            snapshot.proxy_server = key
+            s.proxy_enabled = key.get_value::<u32, _>("ProxyEnable").unwrap_or(0) == 1;
+            s.proxy_server = key
                 .get_value::<String, _>("ProxyServer")
                 .unwrap_or_default();
         }
     }
-    snapshot
+    s
 }
-
 fn hidden(command: &mut Command) {
     #[cfg(windows)]
     {
@@ -195,29 +302,34 @@ fn hidden(command: &mut Command) {
         let _ = command;
     }
 }
-
 pub fn pick_configuration() -> Result<Option<PathBuf>> {
+    pick(false)
+}
+pub fn pick_folder() -> Result<Option<PathBuf>> {
+    pick(true)
+}
+fn pick(folder: bool) -> Result<Option<PathBuf>> {
     if !cfg!(windows) {
-        bail!("The native configuration picker requires Windows");
+        bail!("The native picker requires Windows")
     }
+    let script = if folder {
+        "$d=[Windows.Forms.FolderBrowserDialog]::new();$d.Description='Choose a private URTW runtime folder';if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.SelectedPath)};$d.Dispose()"
+    } else {
+        "$d=[Windows.Forms.OpenFileDialog]::new();$d.Title='Choose a native YAML / JSON or WireGuard profile';$d.Filter='Routing profiles|*.yaml;*.yml;*.json;*.conf|All files|*.*';$d.CheckFileExists=$true;if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)};$d.Dispose()"
+    };
     let mut cmd = Command::new("powershell.exe");
     hidden(&mut cmd);
-    let output = cmd.args(["-NoProfile", "-STA", "-Command", "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); Add-Type -AssemblyName System.Windows.Forms; $d=[Windows.Forms.OpenFileDialog]::new(); $d.Title='Select a Mihomo YAML or WireGuard profile'; $d.Filter='Routing configurations (*.yaml;*.yml;*.conf)|*.yaml;*.yml;*.conf'; $d.CheckFileExists=$true; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)}; $d.Dispose()"]).output()?;
+    let output=cmd.args(["-NoProfile","-STA","-Command",&format!("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);Add-Type -AssemblyName System.Windows.Forms;{script}")]).output()?;
     if !output.status.success() {
-        bail!("Could not open the Windows file picker");
+        bail!("Could not open the Windows picker; enter the path with F")
     }
     let path = String::from_utf8(output.stdout)?.trim().to_owned();
-    Ok(if path.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(path))
-    })
+    Ok((!path.is_empty()).then(|| path.into()))
 }
-
 pub async fn run_action(paths: &Paths, action: &Action, tx: &mpsc::Sender<AppEvent>) -> Result<()> {
     let script = paths.assets.join("routing.ps1");
     if !script.is_file() {
-        bail!("routing.ps1 is missing beside the application assets");
+        bail!("routing.ps1 is missing beside the application assets")
     }
     let mut cmd = tokio::process::Command::new("powershell.exe");
     #[cfg(windows)]
@@ -231,9 +343,6 @@ pub async fn run_action(paths: &Paths, action: &Action, tx: &mpsc::Sender<AppEve
         .arg("-Command")
         .arg(action.command());
     match action {
-        Action::SelectConfig(path) => {
-            cmd.arg("-Path").arg(path);
-        }
         Action::Install(c) => {
             cmd.arg("-Component").arg(c.id());
         }
@@ -243,18 +352,27 @@ pub async fn run_action(paths: &Paths, action: &Action, tx: &mpsc::Sender<AppEve
         _ => {}
     }
     let mut child = cmd
-        .stdin(std::process::Stdio::null())
+        .stdin(if matches!(action, Action::Workspace { .. }) {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .context("Could not start the Windows backend")?;
+    if let Action::Workspace { request, .. } = action {
+        let mut input = child.stdin.take().context("Missing request stream")?;
+        input.write_all(&serde_json::to_vec(request)?).await?;
+        input.shutdown().await?;
+    }
     let stderr = child
         .stderr
         .take()
         .context("Missing backend error stream")?;
     let error_task = tokio::spawn(async move {
         let mut data = Vec::new();
-        let _ = stderr.take(16_384).read_to_end(&mut data).await;
+        let _ = stderr.take(16384).read_to_end(&mut data).await;
         String::from_utf8_lossy(&data).into_owned()
     });
     let mut lines = BufReader::new(
@@ -288,8 +406,32 @@ pub async fn run_action(paths: &Paths, action: &Action, tx: &mpsc::Sender<AppEve
         let detail = errors
             .lines()
             .find_map(|s| s.strip_prefix("URT_ERROR|"))
-            .unwrap_or("Operation failed; inspect the component log in the runtime folder");
+            .unwrap_or("Operation failed; inspect the private component log");
         bail!("{}", detail.chars().take(240).collect::<String>());
     }
     Ok(())
+}
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    #[test]
+    fn ownership_paths_accept_windows_separators_and_case() {
+        assert!(same_path(
+            Path::new(r"C:\URTW-data\tools/mihomo/mihomo.exe"),
+            Path::new(r"c:\urtw-data\tools\mihomo\mihomo.exe")
+        ));
+        assert!(!same_path(
+            Path::new(r"C:\URTW-data\tools\mihomo\mihomo.exe"),
+            Path::new(r"C:\URTW-other\tools\mihomo\mihomo.exe")
+        ));
+    }
+    #[test]
+    fn explicit_roots_are_normalized_without_creating_directories() {
+        let p = Paths::discover(
+            Some(r"C:\URTW-preview\unused\..\data".into()),
+            Some(r"C:\URTW-preview\assets".into()),
+        )
+        .unwrap();
+        assert!(same_path(&p.root, Path::new(r"C:\URTW-preview\data")));
+    }
 }

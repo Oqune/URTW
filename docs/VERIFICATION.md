@@ -16,7 +16,7 @@ a short key ID or a key delivered beside an untrusted archive.
 gpg --import maintainer-public-key.asc
 gpg --fingerprint 4DE573BC31517B8CDC3F778852EA513D2E488D74
 gpg --verify SHA256SUMS.asc SHA256SUMS
-Get-FileHash .\URT-1.0.0-windows-amd64.zip -Algorithm SHA256
+Get-FileHash .\URTW-1.0.0-windows-amd64.zip -Algorithm SHA256
 ```
 
 Compare the full ZIP hash with its line in SHA256SUMS. With GNU tools, use

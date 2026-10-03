@@ -1,10 +1,10 @@
 [CmdletBinding()]
-param([switch]$Integration)
+param([switch]$Integration,[string]$Dashboard)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $project=Split-Path -Parent $PSScriptRoot
 $tempBase=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
-$runtime=Join-Path $tempBase ('URT-test-'+[guid]::NewGuid().ToString('N'))
+$runtime=Join-Path $tempBase ('URTW-test-'+[guid]::NewGuid().ToString('N'))
 $script:checks=0
 function Assert-That([bool]$Condition,[string]$Message){if(-not $Condition){throw "FAILED: $Message"};$script:checks++;Write-Host "PASS: $Message"}
 function Assert-Throws([scriptblock]$Block,[string]$Message){$failed=$false;try{& $Block | Out-Null}catch{$failed=$true};Assert-That $failed $Message}
@@ -59,10 +59,11 @@ try {
     Assert-That (-not(Get-OwnedProcess 'mihomo')) 'Selecting a profile does not start the core'
     $pac=Get-Content -LiteralPath (Join-Path $runtime 'browser-routing.pac') -Raw
     Assert-That ($pac.Contains('return "DIRECT";') -and $pac.Contains('chatgpt.com')) 'Browser PAC has selective proxy rules and a direct fallback'
+    $tgListener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0);$tgListener.Start();$tgPort=$tgListener.LocalEndpoint.Port;$tgListener.Stop();$s=Read-Settings;$s.tg_port=$tgPort;Save-Settings $s
     $cfg=Ensure-TgConfig
     Assert-That ($cfg.host -eq '127.0.0.1' -and $cfg.secret -match '^[a-f0-9]{32}$' -and -not $cfg.no_secure) 'Telegram default uses loopback, a generated secret and TLS'
     Assert-That ((Get-Acl -LiteralPath (Get-TgConfigPath)).AreAccessRulesProtected) 'Telegram secret file has a protected ACL'
-    Assert-That ((Get-TelegramLink).StartsWith('tg://proxy?server=127.0.0.1&port=1443&secret=')) 'Telegram link uses the private configured secret'
+    Assert-That ((Get-TelegramLink).StartsWith('tg://proxy?server=127.0.0.1&port='+$tgPort+'&secret=')) 'Telegram link uses the private configured secret'
     $self=Get-Process -Id $PID
     $record=@{pid=$PID;path=$self.Path;start_time=([DateTimeOffset]$self.StartTime.ToUniversalTime()).ToUnixTimeSeconds();config=''}
     Write-AtomicText (Join-Path $runtime 'mihomo.pid.json') ($record | ConvertTo-Json) -Private
@@ -82,6 +83,18 @@ try {
         $before=Get-ItemProperty -LiteralPath $proxyKey | Select-Object ProxyEnable,ProxyServer,ProxyOverride,AutoConfigURL | ConvertTo-Json -Compress
         Start-Mihomo
         Assert-That ([bool](Get-OwnedProcess 'mihomo') -and (Test-Port $testPort)) 'Isolated proxy-only core starts on its own random loopback port'
+        if($Dashboard){
+            $dashboardFile=(Get-Item -LiteralPath $Dashboard).FullName
+            $versionOutput=& $dashboardFile --version
+            Assert-That ($versionOutput -eq ('URTW '+(Get-Content -LiteralPath (Join-Path $project 'VERSION') -Raw).Trim())) 'Dashboard integration uses the current built version'
+            $uiSnapshot=Join-Path $runtime 'core-ui.json'
+            & $dashboardFile --root $runtime --assets $project --snapshot $uiSnapshot --width 120 --height 30 --tab 1
+            if($LASTEXITCODE -ne 0){throw 'Dashboard snapshot failed.'}
+            $cells=(Get-Content -LiteralPath $uiSnapshot -Raw | ConvertFrom-Json).cells
+            $screen=($cells | ForEach-Object {$_.text}) -join ''
+            $corePid=(Get-OwnedProcess 'mihomo').Id
+            Assert-That ($screen -match 'Mihomo\s+Running\s+PID' -and $screen.Contains('PID '+$corePid)) 'Rust UI recognizes the real isolated core as managed and listening'
+        }
         Stop-OwnedProcess 'mihomo'
         Assert-That (-not(Test-Port $testPort)) 'Isolated core stops and releases its listener'
         $after=Get-ItemProperty -LiteralPath $proxyKey | Select-Object ProxyEnable,ProxyServer,ProxyOverride,AutoConfigURL | ConvertTo-Json -Compress
@@ -96,12 +109,13 @@ try {
         Assert-Throws {Install-Component 'zapret'} 'Zapret package replacement requires upstream management'
     }
     ${function:Test-MihomoConfig}=$originalValidator
+    . (Join-Path $PSScriptRoot 'test-workspace.ps1')
     Write-Host "$script:checks engine checks passed."
 } finally {
     if(Test-Path -LiteralPath $runtime){
-        if(Get-Command Get-OwnedProcess -ErrorAction SilentlyContinue){try{Stop-OwnedProcess 'mihomo'}catch{}}
+        if(Get-Command Get-OwnedProcess -ErrorAction SilentlyContinue){foreach($ownedCore in @('mihomo','singbox','xray')){try{Stop-OwnedProcess $ownedCore}catch{Write-Warning ('Could not clean up isolated '+$ownedCore+' process. Runtime retained for inspection.')}}}
         $resolved=[IO.Path]::GetFullPath($runtime)
-        if(-not $resolved.StartsWith($tempBase,[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notmatch '^URT-test-[a-f0-9]{32}$'){throw 'Unsafe test cleanup path.'}
+        if(-not $resolved.StartsWith($tempBase,[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notmatch '^URTW-test-[a-f0-9]{32}$'){throw 'Unsafe test cleanup path.'}
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }

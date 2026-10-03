@@ -11,7 +11,7 @@ impl NetworkTester {
         let mut builder = Client::builder()
             .no_proxy()
             .timeout(Duration::from_secs(8))
-            .user_agent(concat!("URT/", env!("CARGO_PKG_VERSION")));
+            .user_agent(concat!("URTW/", env!("CARGO_PKG_VERSION")));
         if let Some(port) = proxy_port {
             builder = builder.proxy(Proxy::all(format!("http://127.0.0.1:{port}"))?);
         }
