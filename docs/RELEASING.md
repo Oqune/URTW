@@ -9,16 +9,16 @@ local, so the existing private key is not exported into Actions secrets.
 3. Commit using Conventional Commits; create a signed tag:
 
 ```powershell
-git tag -s v1.0.0 -m "URTW v1.0.0"
+git tag -s v1.1.0 -m "URTW v1.1.0"
 git push origin master
-git push origin v1.0.0
+git push origin v1.1.0
 ```
 
 4. Wait for the Build and Release workflow to pass.
 5. Run the local publication gate:
 
 ```powershell
-powershell -File scripts/publish-release.ps1 -Version 1.0.0
+powershell -File scripts/publish-release.ps1 -Version 1.1.0
 ```
 
 If GPG is not on PATH, pass its installed executable with `-Gpg`, for example

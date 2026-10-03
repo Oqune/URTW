@@ -455,12 +455,22 @@ mod tests {
             label: "Test Unicode",
         };
         let result = run_action(&paths, &action, &tx).await;
+        let native = root.join("profiles").join("профиль.yaml");
+        if result.is_ok() {
+            fs::write(&native,"mixed-port: 17890\nallow-lan: false\nmode: rule\nproxies: []\nrules: [MATCH,DIRECT]\n").unwrap();
+        }
+        let selected = if result.is_ok() {
+            run_action(&paths,&Action::Workspace{request:serde_json::json!({"action":"SelectFile","core":"mihomo","path":native}),label:"Test Unicode path"},&tx).await
+        } else {
+            Ok(())
+        };
         let bytes = fs::read(root.join("workspace.json"));
         assert_eq!(root.parent(), Some(base.as_path()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
         result.unwrap();
+        selected.unwrap();
         let value: serde_json::Value = serde_json::from_slice(&bytes.unwrap()).unwrap();
         assert!(
             value["standards"]
@@ -468,6 +478,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|s| s["name"] == "Тест Unicode")
+        );
+        assert!(
+            value["profiles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["path"] == native.to_string_lossy().as_ref())
         );
     }
 }
