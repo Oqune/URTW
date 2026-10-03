@@ -12,6 +12,7 @@ $ErrorActionPreference='Stop'
 $Assets=$PSScriptRoot
 $Root=[IO.Path]::GetFullPath($Root).TrimEnd('\')
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)
 
 function Write-ProgressEvent([int]$Percent,[string]$Message) { [Console]::WriteLine("URT_PROGRESS|$Percent|$Message") }
 function Assert-RuntimePath([string]$Candidate) {
@@ -59,7 +60,7 @@ function Write-AtomicText([string]$Destination,[string]$Text,[switch]$Private) {
 function Read-Settings {
     $file=Join-Path $Root 'settings.json'
     if(Test-Path -LiteralPath $file){
-        $s=Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+        $s=Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json
         if($s.schema_version -ne 1){throw 'Unsupported runtime settings schema.'}
         return $s
     }
@@ -73,7 +74,7 @@ function Test-Port([int]$LocalPort) {
 function Get-OwnedProcess([string]$Name) {
     $file=Join-Path $Root ($Name+'.pid.json')
     if(-not(Test-Path -LiteralPath $file)){return $null}
-    $r=Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+    $r=Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json
     $process=Get-Process -Id $r.pid -ErrorAction SilentlyContinue
     if(-not $process){return $null}
     $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$r.pid)
@@ -101,7 +102,7 @@ function Assert-Key([string]$Value,[string]$Label) {
 }
 function Read-WireGuard([string]$Source) {
     $profile=@{}; $section='';$peers=0
-    foreach($raw in (Get-Content -LiteralPath $Source)) {
+    foreach($raw in (Get-Content -Encoding UTF8 -LiteralPath $Source)) {
         $text=($raw -split '[#;]',2)[0].Trim()
         if(-not $text){continue}
         if($text -match '^\[(Interface|Peer)\]$'){$section=$matches[1];if($section -eq 'Peer'){$peers++};continue}
@@ -137,7 +138,7 @@ function Read-RuleList([string]$Name) {
     $file=Join-Path $Root ('rules\'+$Name)
     if(-not(Test-Path -LiteralPath $file)){$file=Join-Path $Assets ('config\rules\'+$Name)}
     if(-not(Test-Path -LiteralPath $file)){return @()}
-    return @(Get-Content -LiteralPath $file | ForEach-Object {$_.Trim().ToLowerInvariant()} | Where-Object {$_ -and -not $_.StartsWith('#')})
+    return @(Get-Content -Encoding UTF8 -LiteralPath $file | ForEach-Object {$_.Trim().ToLowerInvariant()} | Where-Object {$_ -and -not $_.StartsWith('#')})
 }
 function New-WireGuardYaml($Profile) {
     $vpn=@(Read-RuleList 'vpn-domains.txt');$browser=@(Read-RuleList 'browser-vpn-domains.txt');$direct=@(Read-RuleList 'direct-domains.txt');$apps=@(Read-RuleList 'vpn-processes.txt')
@@ -186,7 +187,7 @@ function Test-MihomoConfig([string]$Configuration) {
     if($LASTEXITCODE -ne 0){throw 'Mihomo rejected the configuration. Validate the selected YAML locally; credentials are not printed by URTW.'}
 }
 function Get-MihomoMixedPort([string]$Configuration) {
-    $text=Get-Content -LiteralPath $Configuration -Raw
+    $text=Get-Content -Encoding UTF8 -LiteralPath $Configuration -Raw
     if($text -notmatch '(?m)^mixed-port:\s*(\d+)\s*(?:#.*)?$'){throw 'URTW requires an explicit top-level mixed-port in the selected YAML.'}
     $mixedPort=[int]$matches[1];if($mixedPort -lt 1 -or $mixedPort -gt 65535){throw 'Invalid mixed-port.'}
     return $mixedPort
@@ -220,7 +221,7 @@ function Start-Mihomo {
     if((Get-MihomoMixedPort $s.active_config) -ne $s.mihomo_port){throw 'The profile mixed-port changed; re-select it before starting Mihomo.'}
     Test-MihomoConfig $s.active_config
     if(Test-Port $s.mihomo_port){throw 'The selected Mihomo port is occupied by another process. URTW will not stop it.'}
-    $text=Get-Content -LiteralPath $s.active_config -Raw
+    $text=Get-Content -Encoding UTF8 -LiteralPath $s.active_config -Raw
     $tunBlock=[regex]::Match($text,'(?ms)^tun:\s*(?:\{[^\r\n]*\}|\r?\n(?:[ \t]+[^\r\n]*\r?\n?)*)').Value
     if($tunBlock -match '(?i)enable:\s*true'){
         $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -236,7 +237,7 @@ function Get-TgExe {return (Resolve-InstalledPath 'telegram' (Join-Path $Root 't
 function Get-TgConfigPath {return (Join-Path (Split-Path -Parent (Get-TgExe)) 'TgWsProxy_data\config.json')}
 function Ensure-TgConfig {
     $file=Get-TgConfigPath
-    if(Test-Path -LiteralPath $file){return (Get-Content -LiteralPath $file -Raw | ConvertFrom-Json)}
+    if(Test-Path -LiteralPath $file){return (Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json)}
     $rng=[Security.Cryptography.RandomNumberGenerator]::Create();$bytes=New-Object byte[] 16;try{$rng.GetBytes($bytes)}finally{$rng.Dispose()}
     $s=Read-Settings
     $cfg=[pscustomobject]@{host='127.0.0.1';port=$s.tg_port;secret=([BitConverter]::ToString($bytes).Replace('-','').ToLowerInvariant());dc_ip=@('2:149.154.167.220','4:149.154.167.220');verbose=$false;check_updates=$false;log_max_mb=5;buf_kb=256;pool_size=4;cfproxy=$true;cfproxy_user_domain_enabled=$false;cfproxy_user_domain=@();cfproxy_worker_enabled=$false;cfproxy_worker_domain=@();force_test_dc=$false;no_secure=$false;language='en';autostart=$false}
@@ -259,7 +260,7 @@ function Start-Telegram {
 }
 function Get-TelegramLink {
     $file=Get-TgConfigPath;if(-not(Test-Path -LiteralPath $file)){throw 'Start or configure the managed Telegram proxy first.'}
-    $cfg=Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+    $cfg=Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json
     if($cfg.host -ne '127.0.0.1' -or $cfg.secret -notmatch '^[a-fA-F0-9]{32}$'){throw 'Unsupported Telegram host or secret. Use the upstream tray connection link for advanced secret formats.'}
     return ('tg://proxy?server=127.0.0.1&port='+$cfg.port+'&secret='+$cfg.secret)
 }
@@ -287,14 +288,14 @@ function Download-Verified($Asset,[string]$Destination) {
 function Install-Component([string]$Name) {
     if(Get-OwnedProcess $Name){throw 'Stop the managed component before replacing its binary.'}
     $arch=if($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64'){'arm64'}elseif([Environment]::Is64BitOperatingSystem){'amd64'}else{throw 'URTW supports x64 and ARM64 Windows only.'}
-    $manifest=Get-Content -LiteralPath (Join-Path $Assets 'components.lock.json') -Raw | ConvertFrom-Json
+    $manifest=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Assets 'components.lock.json') -Raw | ConvertFrom-Json
     if(-not $manifest.PSObject.Properties[$Name]){throw 'Custom adapters use B on Cores to install a trusted local binary.'}
     $item=$manifest.$Name;$property=$item.PSObject.Properties[$arch]
     if(-not $property){throw 'This component is unavailable for the current Windows architecture.'}
     $target=Join-Path $Root ('tools\'+$Name)
     $activeExe=if($Name -eq 'telegram'){Get-TgExe}elseif($Name -ne 'zapret'){Get-CoreExe $Name}else{Join-Path $target 'bin\winws.exe'}
     if(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and [string]::Equals($_.ExecutablePath,$activeExe,[StringComparison]::OrdinalIgnoreCase)}){throw 'The component executable is running; stop it explicitly before replacing binaries.'}
-    $aliasesFile=Join-Path $Root 'installed-paths.json';if(Test-Path -LiteralPath $aliasesFile){$aliases=Get-Content -LiteralPath $aliasesFile -Raw | ConvertFrom-Json;if($aliases.PSObject.Properties[$Name]){throw 'An existing installation alias is present. Preserve its binaries or install in a new runtime folder.'}}
+    $aliasesFile=Join-Path $Root 'installed-paths.json';if(Test-Path -LiteralPath $aliasesFile){$aliases=Get-Content -Encoding UTF8 -LiteralPath $aliasesFile -Raw | ConvertFrom-Json;if($aliases.PSObject.Properties[$Name]){throw 'An existing installation alias is present. Preserve its binaries or install in a new runtime folder.'}}
     if($Name -eq 'zapret' -and (Test-Path -LiteralPath (Join-Path $target 'service.bat'))){throw 'An existing Zapret package is present. Use its upstream manager for updates to preserve custom strategies and lists.'}
     $stage=Assert-RuntimePath (Join-Path $Root ('staging-'+[guid]::NewGuid().ToString('N')))
     New-Item -ItemType Directory -Path $stage | Out-Null
@@ -337,7 +338,7 @@ function Install-Component([string]$Name) {
             }
         }
         $versionsFile=Join-Path $Root 'installed.json';$versions=@{}
-        if(Test-Path -LiteralPath $versionsFile){$v=Get-Content -LiteralPath $versionsFile -Raw | ConvertFrom-Json;foreach($p in $v.PSObject.Properties){$versions[$p.Name]=$p.Value}}
+        if(Test-Path -LiteralPath $versionsFile){$v=Get-Content -Encoding UTF8 -LiteralPath $versionsFile -Raw | ConvertFrom-Json;foreach($p in $v.PSObject.Properties){$versions[$p.Name]=$p.Value}}
         $versions[$Name]=$item.version;Write-AtomicText $versionsFile ($versions | ConvertTo-Json) -Private
         Write-ProgressEvent 100 'Installed verified component; startup remains a separate action'
     } finally {if(Test-Path -LiteralPath $stage){$checked=Assert-RuntimePath $stage;Remove-Item -LiteralPath $checked -Recurse -Force}}
@@ -364,7 +365,7 @@ function Apply-ProxyValues([string]$Key,$Values) {
 }
 function Enable-SystemProxy {
     $s=Read-Settings;if(-not(Get-OwnedProcess 'mihomo')){throw 'Start the managed Mihomo listener before enabling the Windows proxy.'}
-    $record=Get-Content -LiteralPath (Join-Path $Root 'mihomo.pid.json') -Raw | ConvertFrom-Json
+    $record=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Root 'mihomo.pid.json') -Raw | ConvertFrom-Json
     Assert-RunningMihomoSelection $s $record
     if(-not(Test-Port $record.port)){throw 'The managed Mihomo listener is unavailable.'}
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings';$backupFile=Join-Path $Root 'proxy-backup.json'
@@ -376,7 +377,7 @@ function Enable-SystemProxy {
 }
 function Restore-SystemProxy {
     $backupFile=Join-Path $Root 'proxy-backup.json';if(-not(Test-Path -LiteralPath $backupFile)){throw 'This runtime has no Windows proxy snapshot; external proxy settings are left to their owner.'}
-    $backup=Get-Content -LiteralPath $backupFile -Raw | ConvertFrom-Json;$key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+    $backup=Get-Content -Encoding UTF8 -LiteralPath $backupFile -Raw | ConvertFrom-Json;$key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
     $current=Get-ItemProperty -LiteralPath $key
     Assert-ProxyOwnership $current $backup.applied
     Apply-ProxyValues $key $backup.values

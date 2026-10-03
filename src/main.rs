@@ -309,6 +309,9 @@ fn key(app: &mut App, key: KeyCode) -> bool {
                 app.core_request("Stop", "Stopping owned core")
             }
         }
+        KeyCode::Char('y' | 'Y') if app.tab == Tab::Overview => {
+            app.core_request("OpenLegacy", "Opening original legacy manager")
+        }
         KeyCode::Char('p' | 'P') if app.tab == Tab::Overview => {
             if app.snapshot.proxy_enabled {
                 app.action(Action::DisableProxy)

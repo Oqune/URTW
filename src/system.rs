@@ -434,4 +434,40 @@ mod tests {
         .unwrap();
         assert!(same_path(&p.root, Path::new(r"C:\URTW-preview\data")));
     }
+
+    #[tokio::test]
+    async fn real_backend_stdin_preserves_unicode_names_and_private_paths() {
+        let base = std::env::temp_dir();
+        let name = format!(
+            "URTW-stdin-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = base.join(name);
+        let paths =
+            Paths::discover(Some(root.clone()), Some(env!("CARGO_MANIFEST_DIR").into())).unwrap();
+        let (tx, _rx) = mpsc::channel(32);
+        let action = Action::Workspace {
+            request: serde_json::json!({"action":"AddStandard","name":"Тест Unicode"}),
+            label: "Test Unicode",
+        };
+        let result = run_action(&paths, &action, &tx).await;
+        let bytes = fs::read(root.join("workspace.json"));
+        assert_eq!(root.parent(), Some(base.as_path()));
+        if root.exists() {
+            fs::remove_dir_all(&root).unwrap();
+        }
+        result.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes.unwrap()).unwrap();
+        assert!(
+            value["standards"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["name"] == "Тест Unicode")
+        );
+    }
 }

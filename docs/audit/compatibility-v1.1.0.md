@@ -15,7 +15,7 @@ rules as a migration step. Keep root legacy scripts; deploy app assets separatel
 | Config imports and multiple profiles | Per-core library, pending validation, native picker/path entry, editable copies |
 | Diagnostics / progress | Actual local inbound or system path, HTTP responses separated from transport failure |
 | Original Boot / autostart task | Original scripts/task unchanged; explicit separate URTW core autostart available |
-| StartAll/StopAll, reload, list update, IDE sync, repair/cleanup | Original root commands retained in the deployed legacy script; new UI uses scoped individual controls |
+| StartAll/StopAll, reload, list update, IDE sync, repair/cleanup | Original root commands retained in the deployed legacy script, accessible via Y on Overview; new UI uses scoped individual controls |
 | Updates and rollback | Public app files independent of private configs; private backup before deployment; immutable signed releases |
 
 There is no promise that every legacy automation button has a new UI equivalent.

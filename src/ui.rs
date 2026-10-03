@@ -130,7 +130,7 @@ pub fn render(f: &mut Frame, app: &App) {
     .spacing(u16::from(wide))
     .split(outer);
     let rows = Layout::vertical([
-        Constraint::Length(if wide { 3 } else { 5 }),
+        Constraint::Length(if wide { 3 } else { 4 }),
         Constraint::Min(6),
         Constraint::Length(3),
     ])
@@ -927,8 +927,21 @@ fn footer(f: &mut Frame, app: &App, area: Rect) {
         Tab::Settings => "E Core options · H/K Folder · O Open · B Backup · R Restore · Q",
     };
 
+    let compact = match app.tab {
+        Tab::Overview => "F/N File · S/X Core · P Proxy · D Test · Q",
+        Tab::Profiles => "Enter Select · F/N File · G New · V Check · C Copy · Q",
+        Tab::Diagnostics => "D Test · M Path · ↑↓ Scroll · Q",
+        Tab::Telegram => "S/X Run · L Link · G TG · E Port · O Edit · I · Q",
+        Tab::Zapret => "Enter Manager · I Install · Q",
+        Tab::Components => "↑↓ Select · Enter/I Install · Q",
+        Tab::Cores => "Enter Select · E Options · I Install · A/B Custom · Q",
+        Tab::Endpoints => "Enter Select · A Link · W WG · E Edit · Delete · Q",
+        Tab::Routing => "A Standard · E Rule · B Browser · U/J Move · G New · Q",
+        Tab::Settings => "E Options · H/K Folder · B Backup · R Restore · Q",
+    };
     f.render_widget(
-        Paragraph::new(fit(keys, width)).block(panel(" Actions ")),
+        Paragraph::new(fit(if area.width < 90 { compact } else { keys }, width))
+            .block(panel(" Actions ")),
         area,
     );
 }

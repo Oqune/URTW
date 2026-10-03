@@ -14,7 +14,7 @@ PATTERNS = {
     "GitHub credential": re.compile(r"(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})"),
     "private user path": re.compile(r"(?i)[a-z]:[\\/]Users[\\/](?!YOUR_USER(?:[\\/]|\b))[^\\/\s\"']+[\\/]"),
 }
-FORBIDDEN_NAMES = {"settings.json", "config.json", "installed.json", "installed-paths.json", "workspace.json", "urt-location.json", "telegram-private.json", "cache.db", "routing.log", "proxy-backup.json"}
+FORBIDDEN_NAMES = {"settings.json", "config.json", "installed.json", "installed-paths.json", "installed-data.json", "workspace.json", "urt-location.json", "telegram-private.json", "cache.db", "routing.log", "proxy-backup.json"}
 
 def check(name: str, data: bytes) -> list[str]:
     errors = []

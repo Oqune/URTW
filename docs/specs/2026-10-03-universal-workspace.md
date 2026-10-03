@@ -44,3 +44,7 @@ selection, visible attribution and a real UI/process integration test. Windows
 separator comparison and publication verification also need regression coverage.
 The tagged v1.0.0 preflight is not a published stable release. The expanded release
 is v1.1.0; existing tags are retained.
+
+Private JSON/YAML and stdin requests use explicit UTF-8 on Windows PowerShell 5.1.
+Non-ASCII profile paths and endpoint/standard names must survive save/reload.
+Test the real structured backend request pipe and real local proxy forwarding.

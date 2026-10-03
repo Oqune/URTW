@@ -47,7 +47,7 @@ Delete clears a field, Enter saves, Esc cancels. Credentials are masked.
 
 | Screen | Actions |
 |---|---|
-| Overview | F/N file, S/X selected core, P explicit Windows Proxy, D diagnostics |
+| Overview | F/N file, S/X selected core, P explicit Windows Proxy, D diagnostics, Y installed legacy tools |
 | Profiles | Enter select, V validate, C private editable copy, R rename, Delete remove entry, G generate, O open, L log |
 | Diagnostics | D run, M local inbound/system path; HTTP denials count as completed responses |
 | Telegram | I install, S/X start/stop, L copy private link, G connect, E port, O upstream settings |
@@ -91,7 +91,7 @@ A matching PAC domain does not silently fall back to DIRECT on proxy failure.
 | DNS DoT | Yes | Yes | Native profile only |
 
 Per-core ports, DNS, family strategy, IPv6, log level and supported TUN settings
-are saved independently. Native validation is syntax validation; VPN reachability
+are saved independently. With IPv6 off, generated DNS uses IPv4-only. Family preference is vendor-specific: sing-box supports all four choices; Mihomo uses its native default or IPv4-only, Xray uses both families or IPv4/IPv6-only. Unsupported choices are rejected. Native validation is syntax validation; VPN reachability
 needs diagnostics through the actual endpoint. System-path diagnostics disable
 HTTP proxy settings in the test client, but can still traverse a running system TUN.
 

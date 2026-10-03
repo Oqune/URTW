@@ -10,6 +10,10 @@ Assert-That ($endpoint.type -eq 'wireguard' -and (Get-FileHash -LiteralPath $wg)
 $socks=New-LinkEndpoint 'socks5://user:sample-password@example.com:1080#Sample'
 $vless=New-LinkEndpoint ('vless://'+[guid]::NewGuid().ToString()+'@example.com:443?security=tls&type=ws&sni=example.com&path=%2Fws#Sample')
 $trojan=New-LinkEndpoint 'trojan://sample-password@example.com:443?security=tls&type=grpc&serviceName=sample#Sample'
+$httpEndpoint=New-LinkEndpoint 'http://user:sample-password@example.com:8080#Sample'
+$httpsEndpoint=New-LinkEndpoint 'https://user:sample-password@example.com:443#Sample'
+$realityKey=(New-TestKey).TrimEnd('=').Replace('+','-').Replace('/','_')
+$realityEndpoint=New-LinkEndpoint ('vless://'+[guid]::NewGuid().ToString()+'@example.com:443?security=reality&type=tcp&sni=example.com&pbk='+$realityKey+'&sid=0123456789abcdef&fp=chrome#Sample')
 Assert-That ($socks.data.username -eq 'user' -and $vless.data.transport -eq 'ws') 'Share-link credentials and transport are parsed into private endpoint data'
 Assert-Throws {New-LinkEndpoint 'file:///C:/example'} 'Unsupported endpoint protocols are rejected'
 Assert-Throws {New-LinkEndpoint 'vless://invalid@example.com:443?security=tls'} 'Invalid VLESS UUID is rejected'
@@ -42,12 +46,12 @@ foreach($coreId in @('mihomo','singbox','xray')){
     if($Integration){
         if($coreId -ne 'mihomo'){Install-Component $coreId}
         Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' accepts generated direct DNS profile with the real pinned binary')
-        foreach($ep in @($socks,$vless,$trojan,$endpoint)){
+        foreach($ep in @($socks,$vless,$trojan,$endpoint,$httpEndpoint,$httpsEndpoint,$realityEndpoint)){
             Write-AtomicText $nativePath (New-NativeProfile $coreId $ep $proxyStandard $options) -Private
             Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' validates generated '+$ep.type+' endpoint without connecting it')
         }
         foreach($fallback in @('proxy','block')){$fallbackStandard=[pscustomobject]@{id='fallback';name='Fallback';default=$fallback;rules=@();browser_domains=@()};Write-AtomicText $nativePath (New-NativeProfile $coreId $socks $fallbackStandard $options) -Private;Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' validates '+$fallback+' fallback')}
-        if($coreId -ne 'xray'){Write-AtomicText $nativePath (New-NativeProfile $coreId $null $processStandard $options) -Private;Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' validates process routing')}
+        if($coreId -ne 'xray'){Write-AtomicText $nativePath (New-NativeProfile $coreId $null $processStandard $options) -Private;Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' validates process routing');$options.tun=$true;Write-AtomicText $nativePath (New-NativeProfile $coreId $null $directStandard $options) -Private;Assert-That ((Test-CoreConfiguration $coreId $nativePath) -eq 'valid') ($coreId+' validates TUN syntax without creating an adapter');$options.tun=$false}
         $listener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0);$listener.Start();$options.port=$listener.LocalEndpoint.Port;$listener.Stop()
         Write-AtomicText $nativePath (New-NativeProfile $coreId $null $directStandard $options) -Private
         Select-CoreProfile $coreId $nativePath;Start-SelectedCore $coreId

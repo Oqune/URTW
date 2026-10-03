@@ -1,10 +1,10 @@
 # Private workspace and native core adapters. Loaded by routing.ps1.
 function Read-CoreCatalog {
-    $catalog=Get-Content -LiteralPath (Join-Path $Assets 'config\cores.json') -Raw | ConvertFrom-Json
+    $catalog=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Assets 'config\cores.json') -Raw | ConvertFrom-Json
     $items=@($catalog.cores)
     $custom=Join-Path $Root 'core-adapters'
     if(Test-Path -LiteralPath $custom){foreach($file in (Get-ChildItem -LiteralPath $custom -Filter *.json -File)){
-        $adapter=Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        $adapter=Get-Content -Encoding UTF8 -LiteralPath $file.FullName -Raw | ConvertFrom-Json
         Assert-CoreAdapter $adapter
         if($items.id -contains $adapter.id){throw 'A custom adapter cannot replace a built-in core.'}
         $items+=@($adapter)
@@ -23,12 +23,13 @@ function Get-Core([string]$Id) {
     if($core.Count -ne 1){throw 'Unknown core. Select an installed catalog adapter.'}
     return $core[0]
 }
-function Resolve-InstalledPath([string]$Id,[string]$Default) { $file=Join-Path $Root 'installed-paths.json';if(Test-Path -LiteralPath $file){$aliases=Get-Content -LiteralPath $file -Raw | ConvertFrom-Json;$p=$aliases.PSObject.Properties[$Id];if($p){return (Assert-RuntimePath $p.Value)}};return $Default }
+function Resolve-InstalledPath([string]$Id,[string]$Default) { $file=Join-Path $Root 'installed-paths.json';if(Test-Path -LiteralPath $file){$aliases=Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json;$p=$aliases.PSObject.Properties[$Id];if($p){return (Assert-RuntimePath $p.Value)}};return $Default }
 function Get-CoreExe([string]$Id) { $core=Get-Core $Id; return (Resolve-InstalledPath $Id (Join-Path $Root ('tools\'+$Id+'\'+$core.executable))) }
+function Get-CoreData([string]$Id) { $file=Join-Path $Root 'installed-data.json';if(Test-Path -LiteralPath $file){$aliases=Get-Content -Encoding UTF8 -LiteralPath $file -Raw | ConvertFrom-Json;$p=$aliases.PSObject.Properties[$Id];if($p){return (Assert-RuntimePath $p.Value)}};return (Join-Path $Root ('core-data\'+$Id)) }
 function Read-Workspace {
     $path=Join-Path $Root 'workspace.json'
-    if(Test-Path -LiteralPath $path){$w=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json;if($w.schema_version -ne 1){throw 'Unsupported workspace schema.'};return $w}
-    $w=Get-Content -LiteralPath (Join-Path $Assets 'config\workspace-defaults.json') -Raw | ConvertFrom-Json
+    if(Test-Path -LiteralPath $path){$w=Get-Content -Encoding UTF8 -LiteralPath $path -Raw | ConvertFrom-Json;if($w.schema_version -ne 1){throw 'Unsupported workspace schema.'};return $w}
+    $w=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Assets 'config\workspace-defaults.json') -Raw | ConvertFrom-Json
     $legacy=Read-Settings
     $index=0;foreach($path in @($legacy.profiles)){
         $id='legacy-'+$index;$index++;$w.profiles+=@([pscustomobject]@{id=$id;name=[IO.Path]::GetFileName($path);core='mihomo';path=$path;port=$legacy.mihomo_port;validation='pending';generated=$false})
@@ -51,13 +52,13 @@ function Get-SelectedProfile($Workspace,[string]$Id) {
     return $profile[0]
 }
 function Expand-CoreArguments($Arguments,[string]$Id,[string]$Configuration) {
-    $data=Join-Path $Root ('core-data\'+$Id)
+    $data=Get-CoreData $Id
     return @($Arguments | ForEach-Object {$_.Replace('{data}',$data).Replace('{config}',$Configuration).Replace('{root}',$Root)})
 }
 function Test-CoreConfiguration([string]$Id,[string]$Configuration) {
     $core=Get-Core $Id;$exe=Get-CoreExe $Id
     if(-not(Test-Path -LiteralPath $exe)){return 'pending'}
-    $data=Join-Path $Root ('core-data\'+$Id);if(-not(Test-Path -LiteralPath $data)){New-Item -ItemType Directory -Path $data -Force | Out-Null;Protect-PrivateDirectory $data}
+    $data=Get-CoreData $Id;if(-not(Test-Path -LiteralPath $data)){New-Item -ItemType Directory -Path $data -Force | Out-Null;Protect-PrivateDirectory $data}
     $arguments=Expand-CoreArguments $core.validate_args $Id $Configuration
     Write-ProgressEvent 45 'Checking configuration with the selected native core'
     $savedPreference=$ErrorActionPreference
@@ -68,7 +69,7 @@ function Test-CoreConfiguration([string]$Id,[string]$Configuration) {
 function Get-NativeProfilePort([string]$Id,[string]$Configuration) {
     $core=Get-Core $Id
     if($core.format -eq 'yaml'){return (Get-MihomoMixedPort $Configuration)}
-    try{$native=Get-Content -LiteralPath $Configuration -Raw | ConvertFrom-Json}catch{throw 'Invalid JSON profile.'}
+    try{$native=Get-Content -Encoding UTF8 -LiteralPath $Configuration -Raw | ConvertFrom-Json}catch{throw 'Invalid JSON profile.'}
     $inbounds=@($native.inbounds | Where-Object {
         ($_.PSObject.Properties['type'] -and $_.type -in @('mixed','http')) -or ($_.PSObject.Properties['protocol'] -and $_.protocol -eq 'http')
     })
@@ -105,7 +106,7 @@ function Start-SelectedCore([string]$Id) {
     if((Get-NativeProfilePort $Id $profile.path) -ne $profile.port){throw 'The profile port changed; select it again before starting.'}
     $profile.validation=Test-CoreConfiguration $Id $profile.path;Save-Workspace $w
     if(Test-Port $profile.port){throw 'The profile local port is already occupied.'}
-    $text=Get-Content -LiteralPath $profile.path -Raw
+    $text=Get-Content -Encoding UTF8 -LiteralPath $profile.path -Raw
     $hasTun=if($core.format -eq 'yaml'){[regex]::Match($text,'(?ms)^tun:\s*(?:\{[^\r\n]*\}|\r?\n(?:[ \t]+[^\r\n]*\r?\n?)*)').Value -match '(?i)enable:\s*true'}else{$text -match '"type"\s*:\s*"tun"|"protocol"\s*:\s*"tun"'}
     if($hasTun -and -not([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'This profile enables TUN. Start URTW in an administrator terminal.'}
     $args=Expand-CoreArguments $core.start_args $Id $profile.path;$commandLine=(@($args | ForEach-Object {Quote-CoreArgument $_}) -join ' ')
@@ -224,15 +225,17 @@ function Convert-ToYaml($Object,[int]$Indent=0) {
     return $lines -join "`n"
 }
 function New-ClientDns($Options,[string]$Id) {
+    if(-not $Options.ipv6 -and $Options.dns_strategy -in @('prefer_ipv6','ipv6_only')){throw 'Enable IPv6 before choosing an IPv6 DNS strategy.'}
+    if($Id -eq 'mihomo' -and $Options.dns_strategy -in @('prefer_ipv6','ipv6_only')){throw 'Mihomo generator supports IPv4-only or its native default family choice; advanced DNS policies use a native YAML.'}
     if($Id -eq 'mihomo'){return @{enable=$true;listen='127.0.0.1:0';'enhanced-mode'='redir-host';'default-nameserver'=@('1.1.1.1','8.8.8.8');nameserver=@($Options.dns);'proxy-server-nameserver'=@('1.1.1.1','8.8.8.8');ipv6=[bool]$Options.ipv6}}
-    if($Id -eq 'xray'){if(@($Options.dns | Where-Object {$_ -match '^tls://'}).Count){throw 'Xray generator accepts DNS IP addresses and HTTPS DoH; use a native profile for other DNS transports.'};return @{servers=@($Options.dns);queryStrategy=$(switch($Options.dns_strategy){ipv4_only {'UseIPv4'}ipv6_only {'UseIPv6'}default {'UseIP'}})}}
+    if($Id -eq 'xray'){if($Options.dns_strategy -eq 'prefer_ipv6'){throw 'Xray supports UseIP, IPv4-only and IPv6-only; select ipv6_only or use a native DNS policy.'};if(@($Options.dns | Where-Object {$_ -match '^tls://'}).Count){throw 'Xray generator accepts DNS IP addresses and HTTPS DoH; use a native profile for other DNS transports.'};return @{servers=@($Options.dns);queryStrategy=$(if(-not $Options.ipv6){'UseIPv4'}else{switch($Options.dns_strategy){ipv4_only {'UseIPv4'}ipv6_only {'UseIPv6'}default {'UseIP'}}})}}
     $servers=@(@{type='udp';tag='bootstrap';server='1.1.1.1'})
     $index=0;foreach($resolver in @($Options.dns)){
         $address=$null;if([Net.IPAddress]::TryParse($resolver,[ref]$address)){$server=@{type='udp';tag=('dns-'+$index);server=$resolver}}
         else{$uri=[Uri]$resolver;$server=@{type=$(if($uri.Scheme -eq 'https'){'https'}else{'tls'});tag=('dns-'+$index);server=$uri.Host;server_port=$(if($uri.Port -gt 0){$uri.Port}elseif($uri.Scheme -eq 'https'){443}else{853});domain_resolver='bootstrap';tls=@{enabled=$true;server_name=$uri.Host}};if($uri.Scheme -eq 'https'){$server.path=$uri.AbsolutePath}}
         $servers+=@($server);$index++
     }
-    return @{servers=$servers;final='dns-0';strategy=$Options.dns_strategy}
+    return @{servers=$servers;final='dns-0';strategy=$(if($Options.ipv6){$Options.dns_strategy}else{'ipv4_only'})}
 }
 function New-NativeProfile([string]$Id,$Endpoint,$Standard,$Options) {
     $core=Get-Core $Id;Assert-Standard $Standard;Assert-CoreOptions $Options $core
@@ -284,7 +287,7 @@ function Write-WorkspacePac($Standard,[int]$ProxyPort) {
 }
 function Copy-PrivateProfile([string]$ProfileId) {
     $w=Read-Workspace;$source=@($w.profiles | Where-Object {$_.id -eq $ProfileId}) | Select-Object -First 1;if(-not $source){throw 'Unknown profile.'}
-    $id=[guid]::NewGuid().ToString('N');$path=Join-Path $Root ('profiles\'+$id+[IO.Path]::GetExtension($source.path));Write-AtomicText $path (Get-Content -LiteralPath $source.path -Raw) -Private
+    $id=[guid]::NewGuid().ToString('N');$path=Join-Path $Root ('profiles\'+$id+[IO.Path]::GetExtension($source.path));Write-AtomicText $path (Get-Content -Encoding UTF8 -LiteralPath $source.path -Raw) -Private
     $copy=[pscustomobject]@{id=$id;name=($source.name+' / copy');core=$source.core;path=$path;port=$source.port;validation='pending';generated=$false};$w.profiles+=@($copy);$w.selected_profiles | Add-Member -NotePropertyName $source.core -NotePropertyValue $id -Force;Save-Workspace $w
     Start-Process -FilePath notepad.exe -ArgumentList (Quote-CoreArgument $path) | Out-Null
 }
@@ -296,7 +299,7 @@ function Invoke-WorkspaceRequest($Request) {
         SelectFile {Select-CoreProfile $core $Request.path}
         Generate {New-GeneratedProfile $core}
         Start {Start-SelectedCore $core}
-        Stop {if(Test-Path -LiteralPath (Join-Path $Root 'proxy-backup.json')){$b=Get-Content -LiteralPath (Join-Path $Root 'proxy-backup.json') -Raw | ConvertFrom-Json;if((Get-OptionalValue $b 'core' 'mihomo') -eq $core){Restore-SystemProxy}};Stop-OwnedProcess $core}
+        Stop {if(Test-Path -LiteralPath (Join-Path $Root 'proxy-backup.json')){$b=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Root 'proxy-backup.json') -Raw | ConvertFrom-Json;if((Get-OptionalValue $b 'core' 'mihomo') -eq $core){Restore-SystemProxy}};Stop-OwnedProcess $core}
         Validate {$p=Get-SelectedProfile $w $core;$p.validation=Test-CoreConfiguration $core $p.path;Save-Workspace $w;Write-ProgressEvent 100 $(if($p.validation -eq 'pending'){'Install this core to run native validation'}else{'Selected profile passed native validation'})}
         Clone {Copy-PrivateProfile $Request.id}
         RenameProfile {Assert-DisplayName $Request.name;$p=@($w.profiles | Where-Object {$_.id -eq $Request.id}) | Select-Object -First 1;if(-not $p){throw 'Unknown profile.'};$p.name=$Request.name;Save-Workspace $w}
@@ -326,7 +329,8 @@ function Invoke-WorkspaceRequest($Request) {
         OpenLogs {$log=Join-Path $Root ('logs\'+$core+'.out.log');if(-not(Test-Path -LiteralPath $log)){throw 'Start this core to create its log.'};Start-Process -FilePath notepad.exe -ArgumentList (Quote-CoreArgument $log) | Out-Null}
         OpenProfile {$p=Get-SelectedProfile $w $core;Start-Process -FilePath notepad.exe -ArgumentList (Quote-CoreArgument $p.path) | Out-Null}
         OpenFolder {Start-Process -FilePath explorer.exe -ArgumentList (Quote-CoreArgument $Root) | Out-Null}
-        ImportAdapter {$adapter=Get-Content -LiteralPath $Request.path -Raw | ConvertFrom-Json;Assert-CoreAdapter $adapter;if(@(Read-CoreCatalog).id -contains $adapter.id){throw 'This adapter ID already exists.'};Write-AtomicText (Join-Path $Root ('core-adapters\'+$adapter.id+'.json')) ($adapter | ConvertTo-Json -Depth 20) -Private}
+        OpenLegacy {$legacy=Join-Path $Root 'routing.ps1';if(-not(Test-Path -LiteralPath $legacy) -or [string]::Equals($Root,$Assets,[StringComparison]::OrdinalIgnoreCase)){throw 'No separate legacy routing manager exists in this runtime.'};Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File '+(Quote-CoreArgument $legacy)+' -Command Menu') -WorkingDirectory $Root -WindowStyle Normal | Out-Null}
+        ImportAdapter {$adapter=Get-Content -Encoding UTF8 -LiteralPath $Request.path -Raw | ConvertFrom-Json;Assert-CoreAdapter $adapter;if(@(Read-CoreCatalog).id -contains $adapter.id){throw 'This adapter ID already exists.'};Write-AtomicText (Join-Path $Root ('core-adapters\'+$adapter.id+'.json')) ($adapter | ConvertTo-Json -Depth 20) -Private}
         default {throw 'Unknown workspace action.'}
     }
 }
@@ -340,7 +344,7 @@ function Install-LocalCore([string]$Id,[string]$Source){
 }
 function Enable-CoreProxy([string]$Id){
     $w=Read-Workspace;$profile=Get-SelectedProfile $w $Id;if(-not(Get-OwnedProcess $Id)){throw 'Start the managed selected core first.'}
-    $record=Get-Content -LiteralPath (Join-Path $Root ($Id+'.pid.json')) -Raw | ConvertFrom-Json
+    $record=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Root ($Id+'.pid.json')) -Raw | ConvertFrom-Json
     if($record.port -ne $profile.port -or -not[string]::Equals($record.config,$profile.path,[StringComparison]::OrdinalIgnoreCase)){throw 'Selected profile differs from running profile; stop/start before enabling Windows Proxy.'}
     if(-not(Test-Port $record.port)){throw 'The managed HTTP listener is unavailable.'}
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings';$backupFile=Join-Path $Root 'proxy-backup.json';if(Test-Path -LiteralPath $backupFile){throw 'Restore the existing Windows proxy snapshot first.'}
@@ -351,23 +355,23 @@ function Enable-CoreProxy([string]$Id){
 }
 function New-WorkspaceBackup {
     $w=Read-Workspace;$id=[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8);$folder=Assert-RuntimePath (Join-Path $Root ('backups\'+$id));New-Item -ItemType Directory -Path $folder -Force | Out-Null;Protect-PrivateDirectory $folder
-    foreach($p in @($w.profiles)){if(-not(Test-Path -LiteralPath $p.path)){throw 'Backup requires all profile source files to exist.'};$name=$p.id+[IO.Path]::GetExtension($p.path);$target=Join-Path $folder $name;Write-AtomicText $target (Get-Content -LiteralPath $p.path -Raw) -Private;$p.path=$name}
+    foreach($p in @($w.profiles)){if(-not(Test-Path -LiteralPath $p.path)){throw 'Backup requires all profile source files to exist.'};$name=$p.id+[IO.Path]::GetExtension($p.path);$target=Join-Path $folder $name;Write-AtomicText $target (Get-Content -Encoding UTF8 -LiteralPath $p.path -Raw) -Private;$p.path=$name}
     Write-AtomicText (Join-Path $folder 'workspace.json') ($w | ConvertTo-Json -Depth 40) -Private
     Write-AtomicText (Join-Path $folder 'settings.json') ((Read-Settings) | ConvertTo-Json -Depth 20) -Private
-    $tg=Get-TgConfigPath;if(Test-Path -LiteralPath $tg){Write-AtomicText (Join-Path $folder 'telegram-private.json') (Get-Content -LiteralPath $tg -Raw) -Private}
+    $tg=Get-TgConfigPath;if(Test-Path -LiteralPath $tg){Write-AtomicText (Join-Path $folder 'telegram-private.json') (Get-Content -Encoding UTF8 -LiteralPath $tg -Raw) -Private}
     $custom=Join-Path $Root 'core-adapters';if(Test-Path -LiteralPath $custom){Copy-Item -LiteralPath $custom -Destination $folder -Recurse}
     Write-ProgressEvent 100 ('Private backup saved: '+$folder)
 }
 function Restore-WorkspaceBackup([string]$Folder){
     foreach($c in @(Read-CoreCatalog)){if(Get-OwnedProcess $c.id){throw 'Stop all managed cores before restoring a backup.'}};if(Get-OwnedProcess 'telegram'){throw 'Stop managed Telegram before restoring its settings.'}
-    $folderFull=(Get-Item -LiteralPath $Folder).FullName;$source=Join-Path $folderFull 'workspace.json';$w=Get-Content -LiteralPath $source -Raw | ConvertFrom-Json;if($w.schema_version -ne 1){throw 'Unsupported backup schema.'}
-    $contents=@{};foreach($p in @($w.profiles)){if([IO.Path]::GetFileName($p.path) -ne $p.path){throw 'Backup profiles must be relative filenames.'};$contents[$p.id]=Get-Content -LiteralPath (Join-Path $folderFull $p.path) -Raw;$null=Get-Core $p.core}
+    $folderFull=(Get-Item -LiteralPath $Folder).FullName;$source=Join-Path $folderFull 'workspace.json';$w=Get-Content -Encoding UTF8 -LiteralPath $source -Raw | ConvertFrom-Json;if($w.schema_version -ne 1){throw 'Unsupported backup schema.'}
+    $contents=@{};foreach($p in @($w.profiles)){if([IO.Path]::GetFileName($p.path) -ne $p.path){throw 'Backup profiles must be relative filenames.'};$contents[$p.id]=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $folderFull $p.path) -Raw;$null=Get-Core $p.core}
     foreach($s in @($w.standards)){Assert-Standard $s}
-    $tg=Join-Path $folderFull 'telegram-private.json';if(Test-Path -LiteralPath $tg){$cfg=Get-Content -LiteralPath $tg -Raw | ConvertFrom-Json;if(Test-Port $cfg.port){throw 'Telegram listener is active; stop it before restoring settings.'}}
+    $tg=Join-Path $folderFull 'telegram-private.json';if(Test-Path -LiteralPath $tg){$cfg=Get-Content -Encoding UTF8 -LiteralPath $tg -Raw | ConvertFrom-Json;if(Test-Port $cfg.port){throw 'Telegram listener is active; stop it before restoring settings.'}}
     New-WorkspaceBackup
     foreach($p in @($w.profiles)){$path=Join-Path $Root ('profiles\restored-'+[guid]::NewGuid().ToString('N')+[IO.Path]::GetExtension($p.path));Write-AtomicText $path $contents[$p.id] -Private;$p.path=$path;$p.validation='pending'}
     Save-Workspace $w
-    if(Test-Path -LiteralPath $tg){Write-AtomicText (Get-TgConfigPath) (Get-Content -LiteralPath $tg -Raw) -Private;$settings=Read-Settings;$settings.tg_port=[int]$cfg.port;Save-Settings $settings}
+    if(Test-Path -LiteralPath $tg){Write-AtomicText (Get-TgConfigPath) (Get-Content -Encoding UTF8 -LiteralPath $tg -Raw) -Private;$settings=Read-Settings;$settings.tg_port=[int]$cfg.port;Save-Settings $settings}
     Write-ProgressEvent 100 'Backup restored into new private profile copies; original files were retained'
 }
 function Set-WorkspaceAutostart {

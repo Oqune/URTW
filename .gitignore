@@ -5,6 +5,7 @@
 /data/
 /backups/
 /installed-paths.json
+/installed-data.json
 /tools/
 /logs/
 /.qa/
