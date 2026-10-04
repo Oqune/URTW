@@ -47,3 +47,8 @@ contains 114 checks. Shutdown preserves a core still used by an external proxy.
 The v1.1.0 tag pipeline built both architectures and passed all checks but refused
 publication when checkout peeled the annotated tag. v1.1.1 restores and verifies
 the exact origin tag and checks its target against HEAD before draft creation.
+
+v1.1.2 follow-up: live UI inspection found that inaccessible elevated process
+start times produced epoch-sized uptime. Unknown uptime is now explicitly absent;
+timestamp and rendered-row regressions bring the Rust suite to 20 tests. The
+114 engine checks and all private-state/routing compatibility remain applicable.

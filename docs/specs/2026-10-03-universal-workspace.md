@@ -54,3 +54,6 @@ check that the enabled manual Windows Proxy no longer uses its loopback port.
 An adopted listener without a restore snapshot stays running until the user
 detaches the proxy in its original manager or Windows settings. Test this guard
 without writing the live registry, including protocol-specific proxy mappings.
+
+If Windows withholds a process start timestamp (reported as zero), display its
+uptime as unavailable. Do not turn the Unix epoch into a measured runtime.

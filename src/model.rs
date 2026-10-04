@@ -112,7 +112,7 @@ pub struct Service {
     pub listening: bool,
     pub pid: Option<u32>,
     pub memory_mb: u64,
-    pub uptime_secs: u64,
+    pub uptime_secs: Option<u64>,
 }
 impl Service {
     pub fn label(&self) -> &'static str {

@@ -158,7 +158,7 @@ fn snapshot(mut app: App, opts: &Options) -> Result<()> {
             listening: true,
             pid: Some(1200),
             memory_mb: 36,
-            uptime_secs: 4800,
+            uptime_secs: Some(4800),
         };
         app.snapshot.telegram = Service {
             installed: true,

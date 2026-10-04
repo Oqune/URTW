@@ -259,7 +259,7 @@ pub fn inspect(paths: &Paths) -> Snapshot {
             },
             pid: process.map(|p| p.pid().as_u32()),
             memory_mb: process.map_or(0, |p| p.memory() / (1024 * 1024)),
-            uptime_secs: process.map_or(0, |p| p.run_time()),
+            uptime_secs: process.and_then(|p| reported_uptime(p.start_time(), p.run_time())),
         };
         let config = owned.and_then(|_| record.as_ref().and_then(|r| r.config.clone()));
         match id.as_str() {
@@ -294,6 +294,9 @@ pub fn inspect(paths: &Paths) -> Snapshot {
         }
     }
     s
+}
+fn reported_uptime(started: u64, elapsed: u64) -> Option<u64> {
+    (started != 0).then_some(elapsed)
 }
 fn hidden(command: &mut Command) {
     #[cfg(windows)]
@@ -418,6 +421,12 @@ pub async fn run_action(paths: &Paths, action: &Action, tx: &mpsc::Sender<AppEve
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    #[test]
+    fn inaccessible_process_start_does_not_report_epoch_uptime() {
+        assert_eq!(reported_uptime(0, 1_790_000_000), None);
+        assert_eq!(reported_uptime(1_790_000_000, 0), Some(0));
+        assert_eq!(reported_uptime(1_790_000_000, 3600), Some(3600));
+    }
     #[test]
     fn ownership_paths_accept_windows_separators_and_case() {
         assert!(same_path(

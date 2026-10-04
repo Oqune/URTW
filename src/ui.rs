@@ -293,11 +293,11 @@ fn overview(f: &mut Frame, app: &App, area: Rect) {
         let info = svc.pid.map_or_else(
             || "—".into(),
             |pid| {
-                format!(
-                    "PID {pid} / {} MB / {} min",
-                    svc.memory_mb,
-                    svc.uptime_secs / 60
-                )
+                let uptime = svc.uptime_secs.map_or_else(
+                    || "uptime unavailable".to_string(),
+                    |seconds| format!("{} min", seconds / 60),
+                );
+                format!("PID {pid} / {} MB / {uptime}", svc.memory_mb,)
             },
         );
         rows.push(
@@ -1087,5 +1087,20 @@ mod tests {
         for phrase in ["CONNECTED", "Hetzner", "Metric: 5", "42ms", "OPTIMAL"] {
             assert!(!text.contains(phrase));
         }
+    }
+    #[test]
+    fn unknown_process_uptime_is_explicit_in_overview() {
+        let mut app = app();
+        app.snapshot.zapret = Service {
+            installed: true,
+            running: true,
+            listening: true,
+            pid: Some(4242),
+            memory_mb: 12,
+            ..Service::default()
+        };
+        assert!(screen(&app, 160, 40).contains("uptime unavailable"));
+        app.snapshot.zapret.uptime_secs = Some(90);
+        assert!(screen(&app, 160, 40).contains("PID 4242 / 12 MB / 1 min"));
     }
 }

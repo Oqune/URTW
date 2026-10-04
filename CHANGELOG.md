@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 — 2026-10-04
+
+- Display inaccessible process uptime as unavailable, including elevated Zapret.
+- Add timestamp and rendered-overview regression tests.
+
 ## 1.1.1 — 2026-10-04
 
 - First published workspace release; includes all 1.1.0 features below.
