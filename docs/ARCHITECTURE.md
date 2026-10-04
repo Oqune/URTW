@@ -27,6 +27,8 @@ Status uses exact executable, PID and Unix creation time. Windows backend reads
 Win32_Process metadata to avoid Process.Path startup races. Ownership is rechecked
 before stop. State shows running config/port separately from future selection.
 External listeners are observations, not owned resources or VPN success claims.
+Core shutdown refuses to leave an enabled manual Windows Proxy pointing to the
+core's loopback port, including adopted listeners without a restore snapshot.
 
 Structured requests travel over stdin. Progress uses the compatible
 URT_PROGRESS|percent|description protocol, written directly to console rather

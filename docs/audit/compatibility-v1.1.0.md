@@ -38,3 +38,8 @@ not exercised on the user's live PC.
 2026-10-03: 18 Rust tests; 110 Windows PowerShell integration checks, including all five pinned installers, three real native validators, TLS/REALITY/WG/proxy profiles, TUN syntax without activation, owned listener lifecycle and real local HTTP forwarding. Rendering covers all ten views at 1x1 through 200x60, masked forms and final selection visibility. UI snapshots inspected at 60x18, 80x24, 120x30 and 160x40. UTF-8 requests and profile paths tested through the real backend pipe. Source scan and comparison against actual private inputs passed. Linux public-key verification succeeded in CI.
 
 Pinned Xray freedom/dialer DNS strategy is explicitly UseIP so generated DNS servers participate in resolution; see [pinned source](https://github.com/XTLS/Xray-core/blob/v26.3.27/infra/conf/freedom.go).
+
+2026-10-04: four additional shutdown regression checks cover an enabled manual
+proxy, protocol mappings, IPv6 loopback and detached/disabled proxy values without
+registry writes. The local suite passes 60 checks; the full integration suite
+contains 114 checks. Shutdown preserves a core still used by an external proxy.

@@ -300,7 +300,7 @@ function Invoke-WorkspaceRequest($Request) {
         SelectFile {Select-CoreProfile $core $Request.path}
         Generate {New-GeneratedProfile $core}
         Start {Start-SelectedCore $core}
-        Stop {if(Test-Path -LiteralPath (Join-Path $Root 'proxy-backup.json')){$b=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Root 'proxy-backup.json') -Raw | ConvertFrom-Json;if((Get-OptionalValue $b 'core' 'mihomo') -eq $core){Restore-SystemProxy}};Stop-OwnedProcess $core}
+        Stop {Stop-ManagedCore $core}
         Validate {$p=Get-SelectedProfile $w $core;$p.validation=Test-CoreConfiguration $core $p.path;Save-Workspace $w;Write-ProgressEvent 100 $(if($p.validation -eq 'pending'){'Install this core to run native validation'}else{'Selected profile passed native validation'})}
         Clone {Copy-PrivateProfile $Request.id}
         RenameProfile {Assert-DisplayName $Request.name;$p=@($w.profiles | Where-Object {$_.id -eq $Request.id}) | Select-Object -First 1;if(-not $p){throw 'Unknown profile.'};$p.name=$Request.name;Save-Workspace $w}

@@ -114,7 +114,9 @@ Windows Proxy, TG or Zapret. Existing external tasks remain untouched.
 Processes are owned by exact PID, executable path and creation time. External
 processes/listeners are labelled; no broad process-name kills. Windows Proxy has
 an ownership-checked restore snapshot. Stopping its owned core restores proxy
-settings before stop. Secrets are sent to the backend through stdin, never CLI args.
+settings before stop. If an external/manual Windows Proxy still uses that listener,
+stop is refused until you detach it in its original manager or Windows settings.
+Secrets are sent to the backend through stdin, never CLI args.
 Private data and logs stay out of Git/releases. See [SECURITY.md](SECURITY.md).
 
 Telegram uses the official portable tray app, loopback MTProto and WebSocket

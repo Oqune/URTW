@@ -93,7 +93,14 @@ function Save-Process([string]$Name,$Process,[string]$Configuration='',[int]$Lis
 }
 function Stop-OwnedProcess([string]$Name) {
     $p=Get-OwnedProcess $Name
-    if($p){Stop-Process -Id $p.Id -ErrorAction Stop; $p.WaitForExit(5000) | Out-Null}
+    if($p){
+        if($Name -ne 'telegram'){
+            $record=Get-Content -Encoding UTF8 -LiteralPath (Join-Path $Root ($Name+'.pid.json')) -Raw | ConvertFrom-Json
+            $current=Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+            Assert-ProxyListenerDetached $current ([int](Get-OptionalValue $record 'port' 0))
+        }
+        Stop-Process -Id $p.Id -ErrorAction Stop; $p.WaitForExit(5000) | Out-Null
+    }
     $record=Assert-RuntimePath (Join-Path $Root ($Name+'.pid.json'))
     if(Test-Path -LiteralPath $record){Remove-Item -LiteralPath $record -Force}
 }
@@ -360,6 +367,24 @@ function Assert-ProxyOwnership($Current,$Applied) {
         if($actual.exists -ne $expected.exists -or ($expected.exists -and $actual.value -ne $expected.value)){throw 'Windows proxy was changed externally; refusing to overwrite the new configuration.'}
     }
 }
+function Assert-ProxyListenerDetached($Current,[int]$ListenPort) {
+    $values=Get-ProxyValues $Current
+    if($ListenPort -le 0 -or -not $values.ProxyEnable.exists -or $values.ProxyEnable.value -ne 1 -or -not $values.ProxyServer.exists){return}
+    foreach($mapping in ([string]$values.ProxyServer.value -split '[;\s]+')){
+        $address=($mapping -split '=')[-1]
+        if($address -match '^(?:(?:https?|socks[45]?|ftp)://)?(?:127\.0\.0\.1|localhost|\[::1\]):([0-9]+)$' -and [int]$matches[1] -eq $ListenPort){
+            throw 'Windows Proxy still uses this listener. Detach it in its original manager or Windows settings before stopping the core; the core remains running.'
+        }
+    }
+}
+function Stop-ManagedCore([string]$Name) {
+    $backupFile=Join-Path $Root 'proxy-backup.json'
+    if(Test-Path -LiteralPath $backupFile){
+        $backup=Get-Content -Encoding UTF8 -LiteralPath $backupFile -Raw | ConvertFrom-Json
+        if((Get-OptionalValue $backup 'core' 'mihomo') -eq $Name){Restore-SystemProxy}
+    }
+    Stop-OwnedProcess $Name
+}
 function Apply-ProxyValues([string]$Key,$Values) {
     foreach($p in $Values.PSObject.Properties){if($p.Value.exists){$type=if($p.Name -eq 'ProxyEnable'){'DWord'}else{'String'};New-ItemProperty -LiteralPath $Key -Name $p.Name -Value $p.Value.value -PropertyType $type -Force | Out-Null}else{Remove-ItemProperty -LiteralPath $Key -Name $p.Name -ErrorAction SilentlyContinue}}
 }
@@ -393,7 +418,7 @@ try {
         'SelectConfig' {Select-Configuration $Path}
         'Install' {if(-not $Component){throw 'Specify a component.'};Install-Component $Component}
         'StartMihomo' {Start-Mihomo}
-        'StopMihomo' {if(Test-Path -LiteralPath (Join-Path $Root 'proxy-backup.json')){Restore-SystemProxy};Stop-OwnedProcess 'mihomo'}
+        'StopMihomo' {Stop-ManagedCore 'mihomo'}
         'StartTG' {Start-Telegram}
         'StopTG' {Stop-OwnedProcess 'telegram'}
         'SetTGPort' {Set-TelegramPort $Port}

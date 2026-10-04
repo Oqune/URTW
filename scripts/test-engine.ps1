@@ -28,6 +28,13 @@ try {
     Assert-That $true 'Exact owned proxy values are recognized without changing the registry'
     $changed=[pscustomobject]@{ProxyEnable=1;ProxyServer='127.0.0.1:17890';ProxyOverride='<local>';AutoConfigURL='https://example.com/new.pac'}
     Assert-Throws {Assert-ProxyOwnership $changed $applied} 'An external PAC change prevents proxy restoration'
+    Assert-Throws {Assert-ProxyListenerDetached $matching 17890} 'A manual Windows Proxy prevents shutdown of its listener'
+    Assert-Throws {Assert-ProxyListenerDetached ([pscustomobject]@{ProxyEnable=1;ProxyServer='http=192.0.2.1:8080;https=localhost:17890'}) 17890} 'Protocol-specific loopback proxy mappings prevent shutdown'
+    Assert-Throws {Assert-ProxyListenerDetached ([pscustomobject]@{ProxyEnable=1;ProxyServer='[::1]:17890'}) 17890} 'IPv6 loopback Windows Proxy prevents shutdown'
+    Assert-ProxyListenerDetached $matching 17891
+    Assert-ProxyListenerDetached ([pscustomobject]@{ProxyEnable=0;ProxyServer='127.0.0.1:17890'}) 17890
+    Assert-ProxyListenerDetached ([pscustomobject]@{}) 17890
+    Assert-That $true 'Other ports, disabled and absent Windows Proxy do not prevent shutdown'
     $coreRecord=[pscustomobject]@{config='selected.yaml';port=17890}
     $selection=[pscustomobject]@{active_config='selected.yaml';mihomo_port=17890}
     Assert-RunningMihomoSelection $selection $coreRecord

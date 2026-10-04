@@ -48,3 +48,9 @@ is v1.1.0; existing tags are retained.
 Private JSON/YAML and stdin requests use explicit UTF-8 on Windows PowerShell 5.1.
 Non-ASCII profile paths and endpoint/standard names must survive save/reload.
 Test the real structured backend request pipe and real local proxy forwarding.
+
+Before stopping an owned core, restore only its own Windows Proxy snapshot and
+check that the enabled manual Windows Proxy no longer uses its loopback port.
+An adopted listener without a restore snapshot stays running until the user
+detaches the proxy in its original manager or Windows settings. Test this guard
+without writing the live registry, including protocol-specific proxy mappings.
