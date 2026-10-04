@@ -1,9 +1,9 @@
 [package]
 name = "urtw"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 rust-version = "1.88"
-description = "Windows routing dashboard for Mihomo, Zapret and Telegram WS Proxy"
+description = "Windows routing dashboard for Mihomo, sing-box, Xray, Zapret and Telegram WS Proxy"
 license = "MIT"
 repository = "https://github.com/Oqune/URTW"
 publish = false

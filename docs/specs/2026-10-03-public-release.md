@@ -45,3 +45,10 @@ and creates draft releases. Publication requires verified GPG-signed checksums.
 Isolated integration installs each x64 upstream package without launching
 Telegram or Zapret, checks Telegram config preservation and refuses Zapret
 package replacement that could overwrite customized upstream files.
+## Signed-tag checkout correction (2026-10-04)
+
+GitHub checkout may replace the event's annotated tag ref with its peeled commit.
+Before release verification, fetch that exact tag ref again from origin, require
+an annotated tag object, and require its peeled commit to match the built HEAD.
+Keep earlier tags immutable. v1.1.0 remains an unpublished preflight; v1.1.1 is
+the publication candidate with the same workspace features and this CI fix.

@@ -15,6 +15,6 @@ This development repository is independent from any existing deployed installati
 | Routing/component backend | routing.ps1 |
 | Pinned verified downloads | components.lock.json |
 | CI / release | .github/workflows/build.yml / scripts/ |
-| Release acceptance evidence | docs/audit/compatibility-v1.1.0.md |
+| Release acceptance evidence | docs/audit/compatibility-v1.1.1.md |
 
 No private profiles or installed component binaries belong in source control.

@@ -1,11 +1,11 @@
-# Compatibility and release audit — v1.1.0
+# Compatibility and release audit — v1.1.1
 
 The public source is independent of a personal installation. Updating a deployed
 legacy installation must preserve its native config, credentials, TG data, Zapret
 strategies, component versions and scheduled tasks. Do not generate replacement
 rules as a migration step. Keep root legacy scripts; deploy app assets separately.
 
-| Existing capability | v1.1.0 treatment |
+| Existing capability | v1.1.1 treatment |
 |---|---|
 | Native Mihomo selective rules / WG / DNS | Original native config selected intact; endpoint copy imported privately for future generation |
 | Browser and per-application split | Original native semantics preserved; editable standards/PAC added for future profiles |
@@ -43,3 +43,7 @@ Pinned Xray freedom/dialer DNS strategy is explicitly UseIP so generated DNS ser
 proxy, protocol mappings, IPv6 loopback and detached/disabled proxy values without
 registry writes. The local suite passes 60 checks; the full integration suite
 contains 114 checks. Shutdown preserves a core still used by an external proxy.
+
+The v1.1.0 tag pipeline built both architectures and passed all checks but refused
+publication when checkout peeled the annotated tag. v1.1.1 restores and verifies
+the exact origin tag and checks its target against HEAD before draft creation.

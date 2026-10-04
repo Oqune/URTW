@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.1.0 — 2026-10-03
+## 1.1.1 — 2026-10-04
+
+- First published workspace release; includes all 1.1.0 features below.
+- Restore the annotated Git tag after CI checkout and verify that it targets the
+  built commit before GPG verification and draft creation.
+- Refuse shutdown while an enabled manual Windows Proxy uses the core listener.
+- v1.0.0 and v1.1.0 are retained unpublished preflight tags.
+
+## 1.1.0 — 2026-10-03 (unpublished preflight)
 
 - Rename to URTW, the Windows companion to URTA; retain compatible CLI/settings.
 - Add sing-box and Xray with real native validation and isolated startup tests.

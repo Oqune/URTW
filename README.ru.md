@@ -107,5 +107,5 @@ Windows Proxy восстанавливается только при совпа�
 оригинальном service.bat. Работающий внешний процесс остаётся под его управлением.
 
 [Авторы и лицензии](THIRD_PARTY_NOTICES.md) · [Архитектура](docs/ARCHITECTURE.md) ·
-[Аудит совместимости](docs/audit/compatibility-v1.1.0.md) ·
+[Аудит совместимости](docs/audit/compatibility-v1.1.1.md) ·
 [Разработка](CONTRIBUTING.md) · [Релизы](docs/RELEASING.md)

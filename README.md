@@ -143,4 +143,4 @@ GPG signed locally before publication; no private signing key in CI.
 
 [Authors & licenses](THIRD_PARTY_NOTICES.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Release procedure](docs/RELEASING.md) · [Changelog](CHANGELOG.md) ·
-[Compatibility audit](docs/audit/compatibility-v1.1.0.md)
+[Compatibility audit](docs/audit/compatibility-v1.1.1.md)
